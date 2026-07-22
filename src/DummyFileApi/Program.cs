@@ -1,3 +1,4 @@
+using DummyFileApi.Generators;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,6 +16,11 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+foreach (var (key, impl) in FileGeneratorRegistry.All)
+{
+    builder.Services.AddKeyedSingleton(typeof(IFileGenerator), key, impl);
+}
 
 var app = builder.Build();
 
