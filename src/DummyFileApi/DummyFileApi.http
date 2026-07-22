@@ -1,0 +1,6 @@
+@DummyFileApi_HostAddress = http://localhost:5119
+
+GET {{DummyFileApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

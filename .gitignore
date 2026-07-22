@@ -1,0 +1,17 @@
+## .NET
+bin/
+obj/
+*.user
+
+## SQLite (Phase 1 persistence layer, see dummy-file-api-phase1-plan.md)
+*.db
+*.db-shm
+*.db-wal
+
+## Serilog file sink output
+logs/
+
+## IDE
+.vs/
+.vscode/
+*.suo
