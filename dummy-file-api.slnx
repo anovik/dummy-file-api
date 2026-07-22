@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DummyFileApi.Tests/DummyFileApi.Tests.csproj" />
+    <Project Path="src/DummyFileApi/DummyFileApi.csproj" />
+  </Folder>
+</Solution>
