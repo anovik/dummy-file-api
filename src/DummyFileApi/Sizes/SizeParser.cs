@@ -47,7 +47,18 @@ public static partial class SizeParser
             return false;
         }
 
-        var rounded = Math.Round(value * multiplier, MidpointRounding.AwayFromZero);
+        decimal rounded;
+        try
+        {
+            // A large enough value can overflow decimal arithmetic here even
+            // though it parsed fine on its own; decimal overflow throws, unlike double.
+            rounded = Math.Round(value * multiplier, MidpointRounding.AwayFromZero);
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+
         if (rounded <= 0 || rounded > long.MaxValue)
         {
             return false;

@@ -14,6 +14,8 @@ public class SizeParserTests
     [InlineData("1MiB", 1024 * 1024)]
     [InlineData("2.5MB", 2621440)]
     [InlineData("  1KB  ", 1024)]
+    [InlineData("1.5B", 2)] // MidpointRounding.AwayFromZero on a fractional byte count
+    [InlineData("9223372036854775807B", long.MaxValue)] // exactly at the long.MaxValue boundary
     public void TryParse_ValidInput_ReturnsExpectedBytes(string input, long expectedBytes)
     {
         var result = SizeParser.TryParse(input, out var bytes);
@@ -32,8 +34,22 @@ public class SizeParserTests
     [InlineData("0KB")]
     [InlineData("1GB")]
     [InlineData("1.5.5MB")]
+    [InlineData("9223372036854775808B")] // one byte past long.MaxValue
     public void TryParse_InvalidInput_ReturnsFalse(string? input)
     {
+        var result = SizeParser.TryParse(input, out var bytes);
+
+        Assert.False(result);
+        Assert.Equal(0, bytes);
+    }
+
+    [Theory]
+    [InlineData("99999999999999999999999MB")] // parses fine as decimal on its own, but overflows once multiplied by the unit factor
+    [InlineData("79000000000000000000000000000MB")] // deliberately near decimal.MaxValue to stress the multiplication itself
+    public void TryParse_ValueOverflowsDuringUnitConversion_ReturnsFalseInsteadOfThrowing(string input)
+    {
+        // decimal arithmetic overflow throws (unlike double); TryParse must
+        // return false here, not let the exception propagate.
         var result = SizeParser.TryParse(input, out var bytes);
 
         Assert.False(result);

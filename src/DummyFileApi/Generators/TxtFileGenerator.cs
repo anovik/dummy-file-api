@@ -12,8 +12,7 @@ public sealed class TxtFileGenerator : IFileGenerator
     public string MimeType => "text/plain";
     public string FileExtension => "txt";
 
-    // A text file can be any size, including empty; 1 byte is a product-sanity
-    // floor rather than a format constraint.
+    // An empty text file is valid; 1 is a basic sanity floor, not a format requirement.
     public long MinSizeBytes => 1;
 
     public async Task GenerateAsync(Stream output, long targetSizeBytes, int? seed, CancellationToken cancellationToken = default)

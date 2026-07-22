@@ -12,8 +12,6 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
         Path.Combine("logs", "dummyfileapi-.log"),
         rollingInterval: RollingInterval.Day));
 
-// Add services to the container.
-
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -26,8 +24,6 @@ foreach (var (key, impl) in FileGeneratorRegistry.All)
 }
 
 var app = builder.Build();
-
-// Configure the HTTP request pipeline.
 
 app.UseSerilogRequestLogging();
 
