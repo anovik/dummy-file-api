@@ -40,4 +40,22 @@ public class FilesController(IServiceProvider serviceProvider, IOptions<FileGene
 
         return new EmptyResult();
     }
+
+    [HttpGet("types")]
+    public IActionResult GetTypes()
+    {
+        var maxSizeBytes = options.Value.MaxSizeBytes;
+
+        var types = FileGeneratorRegistry.All
+            .Select(g => serviceProvider.GetRequiredKeyedService<IFileGenerator>(g.Key))
+            .Select(generator => new FileTypeDto(
+                generator.TypeKey,
+                generator.MimeType,
+                generator.FileExtension,
+                generator.MinSizeBytes,
+                maxSizeBytes))
+            .ToList();
+
+        return Ok(types);
+    }
 }
