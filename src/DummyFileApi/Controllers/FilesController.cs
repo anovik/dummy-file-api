@@ -1,33 +1,35 @@
 using DummyFileApi.Generators;
-using DummyFileApi.Sizes;
+using DummyFileApi.Models;
+using DummyFileApi.Options;
+using DummyFileApi.Validation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace DummyFileApi.Controllers;
 
 [ApiController]
 [Route("api/files")]
-public class FilesController(IServiceProvider serviceProvider) : ControllerBase
+public class FilesController(IServiceProvider serviceProvider, IOptions<FileGenerationOptions> options) : ControllerBase
 {
     [HttpGet("generate")]
     public async Task<IActionResult> Generate([FromQuery] string? type, [FromQuery] string? size, [FromQuery] int? seed, CancellationToken cancellationToken)
     {
-        var key = type?.Trim().ToLowerInvariant();
-        if (key is null || FileGeneratorRegistry.All.All(g => g.Key != key))
+        if (!RequestValidation.TryValidateType(type, out var key, out var typeError))
         {
-            return BadRequest(new { error = $"Unsupported type '{type}'." });
+            return BadRequest(new ErrorResponse(typeError!));
         }
 
-        if (!SizeParser.TryParse(size, out var targetSizeBytes))
+        if (!RequestValidation.TryValidateSize(size, out var targetSizeBytes, out var sizeError))
         {
-            return BadRequest(new { error = $"Invalid size '{size}'. Expected a value like '100KB' or '1.5MB'." });
+            return BadRequest(new ErrorResponse(sizeError!));
         }
 
         var generator = serviceProvider.GetRequiredKeyedService<IFileGenerator>(key);
 
-        if (targetSizeBytes < generator.MinSizeBytes)
+        if (!RequestValidation.TryValidateBounds(targetSizeBytes, generator, options.Value.MaxSizeBytes, out var boundsError))
         {
-            return BadRequest(new { error = $"Size must be at least {generator.MinSizeBytes} bytes for type '{key}'." });
+            return BadRequest(new ErrorResponse(boundsError!));
         }
 
         Response.ContentType = generator.MimeType;
