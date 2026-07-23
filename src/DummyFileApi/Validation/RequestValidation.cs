@@ -38,6 +38,30 @@ public static class RequestValidation
         return true;
     }
 
+    public const int MaxPageSize = 100;
+
+    // Generous cap; also keeps (page - 1) * pageSize far from int overflow,
+    // which would otherwise turn into a negative OFFSET silently serving page 1.
+    public const int MaxPage = 1_000_000;
+
+    public static bool TryValidatePagination(int page, int pageSize, out string? error)
+    {
+        if (page < 1 || page > MaxPage)
+        {
+            error = $"page must be between 1 and {MaxPage}.";
+            return false;
+        }
+
+        if (pageSize < 1 || pageSize > MaxPageSize)
+        {
+            error = $"pageSize must be between 1 and {MaxPageSize}.";
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
     public static bool TryValidateBounds(long requestedBytes, IFileGenerator generator, long maxSizeBytes, out string? error)
     {
         if (requestedBytes < generator.MinSizeBytes)
