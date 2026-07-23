@@ -8,9 +8,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Both the history query and the upcoming rate-limit check filter by
-        // client and time, so index that pair.
+        // History and rate-limit queries filter by client and time, so index
+        // that pair.
         modelBuilder.Entity<GenerationRequest>()
             .HasIndex(r => new { r.ClientId, r.CreatedAtUtc });
+
+        // SQLite stores DateTime as text without timezone info and reads it
+        // back as Unspecified; restamp Utc so serialized values keep the 'Z'.
+        modelBuilder.Entity<GenerationRequest>()
+            .Property(r => r.CreatedAtUtc)
+            .HasConversion(v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
     }
 }

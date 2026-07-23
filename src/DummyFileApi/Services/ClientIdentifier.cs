@@ -1,9 +1,9 @@
 namespace DummyFileApi.Services;
 
 /// <summary>
-/// Derives the client identity used for history and rate limiting. No auth in
-/// v1, so identity is just the remote IP (as rewritten by the forwarded-headers
-/// middleware when behind a proxy).
+/// Derives the client identity used for history and rate limiting. With no
+/// authentication, identity is just the remote IP (as rewritten by the
+/// forwarded-headers middleware when behind a proxy).
 /// </summary>
 public static class ClientIdentifier
 {
