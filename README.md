@@ -7,7 +7,7 @@ ASP.NET Core Web API that generates structurally valid dummy files of an exact r
 - CSV
 - PDF *(in progress)*
 - JPEG *(in progress)*
-- PNG *(in progress)*
+- PNG
 
 # API endpoints
 - `GET /api/files/generate?type=txt&size=100KB&seed=42` — streams a dummy file of the exact requested byte size as a download (`seed` is optional)
@@ -19,6 +19,21 @@ Size units are binary: `KB` = 1024 bytes, `MB` = 1024² bytes (`KiB`/`MiB` are a
 ```bash
 curl -OJ "http://localhost:5119/api/files/generate?type=txt&size=100KB"
 ```
+
+# Libraries used
+
+**API** (`src/DummyFileApi`):
+- [Serilog](https://serilog.net/) — structured logging (console + rolling file) and request timing
+- [Swashbuckle](https://github.com/domaindrivendev/Swashbuckle.AspNetCore) — Swagger/OpenAPI UI (Development only)
+- [EF Core + SQLite](https://learn.microsoft.com/ef/core/) — persistence for the generation history
+- [System.IO.Hashing](https://www.nuget.org/packages/System.IO.Hashing) — CRC-32 for PNG chunk checksums
+
+File generation itself uses no imaging or document libraries by design: generators hand-write each format's bytes, since general-purpose encoders don't expose an exact-byte-count knob.
+
+**Tests** (`src/DummyFileApi.Tests`):
+- [xUnit](https://xunit.net/) — test framework, with [coverlet](https://github.com/coverlet-coverage/coverlet) for coverage
+- [CsvHelper](https://joshclose.github.io/CsvHelper/) — independent parser validating generated CSVs
+- [SixLabors.ImageSharp](https://sixlabors.com/products/imagesharp/) (3.1.x, split license) — independent decoder validating generated images
 
 # Requirements
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
