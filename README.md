@@ -4,7 +4,7 @@ ASP.NET Core Web API that generates structurally valid dummy files of an exact r
 
 # Supported file formats
 - TXT
-- CSV *(in progress)*
+- CSV
 - PDF *(in progress)*
 - JPEG *(in progress)*
 - PNG *(in progress)*

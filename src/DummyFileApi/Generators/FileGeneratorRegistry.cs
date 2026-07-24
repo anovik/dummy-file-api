@@ -6,5 +6,6 @@ public static class FileGeneratorRegistry
     public static readonly IReadOnlyList<(string Key, Type Impl)> All =
     [
         ("txt", typeof(TxtFileGenerator)),
+        ("csv", typeof(CsvFileGenerator)),
     ];
 }
