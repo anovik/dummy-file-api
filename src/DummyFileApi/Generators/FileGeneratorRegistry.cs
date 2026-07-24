@@ -8,5 +8,6 @@ public static class FileGeneratorRegistry
         ("txt", typeof(TxtFileGenerator)),
         ("csv", typeof(CsvFileGenerator)),
         ("png", typeof(PngFileGenerator)),
+        ("jpeg", typeof(JpegFileGenerator)),
     ];
 }
