@@ -5,8 +5,8 @@ ASP.NET Core Web API that generates structurally valid dummy files of an exact r
 # Supported file formats
 - TXT
 - CSV
-- PDF *(in progress)*
-- JPEG *(in progress)*
+- PDF
+- JPEG
 - PNG
 
 # API endpoints
@@ -34,6 +34,7 @@ File generation itself uses no imaging or document libraries by design: generato
 - [xUnit](https://xunit.net/) — test framework, with [coverlet](https://github.com/coverlet-coverage/coverlet) for coverage
 - [CsvHelper](https://joshclose.github.io/CsvHelper/) — independent parser validating generated CSVs
 - [SixLabors.ImageSharp](https://sixlabors.com/products/imagesharp/) (3.1.x, split license) — independent decoder validating generated images
+- [PdfPig](https://github.com/UglyToad/PdfPig) (Apache 2.0) — independent parser validating generated PDFs
 
 # Requirements
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
