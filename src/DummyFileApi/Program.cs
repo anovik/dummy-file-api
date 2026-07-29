@@ -14,7 +14,8 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .WriteTo.Console()
     .WriteTo.File(
         Path.Combine("logs", "dummyfileapi-.log"),
-        rollingInterval: RollingInterval.Day));
+        rollingInterval: RollingInterval.Day,
+        shared: true));
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -38,10 +39,11 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Off by default: without a real proxy overwriting it, a client could set
 // X-Forwarded-For itself to spoof its ClientId and dodge the rate limit.
 // Even then, this trusts the immediate hop with no proxy IP allowlist.
-var trustForwardedHeaders = builder.Configuration.GetValue<bool>("Proxy:TrustForwardedHeaders");
+// Reads the flag lazily from builder.Configuration (not a captured bool) so
+// config added after this line but before Build() still takes effect.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    if (!trustForwardedHeaders)
+    if (!builder.Configuration.GetValue<bool>("Proxy:TrustForwardedHeaders"))
     {
         return;
     }
@@ -81,3 +83,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// Exposes the top-level Program for WebApplicationFactory<Program> in integration tests.
+public partial class Program;
