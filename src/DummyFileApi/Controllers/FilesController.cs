@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using DummyFileApi.Data;
 using DummyFileApi.Generators;
 using DummyFileApi.Models;
@@ -14,7 +15,11 @@ namespace DummyFileApi.Controllers;
 
 [ApiController]
 [Route("api/files")]
-public class FilesController(IServiceProvider serviceProvider, IOptions<FileGenerationOptions> options, AppDbContext dbContext) : ControllerBase
+public class FilesController(
+    IServiceProvider serviceProvider,
+    IOptions<FileGenerationOptions> options,
+    AppDbContext dbContext,
+    GenerationRateLimiter rateLimiter) : ControllerBase
 {
     /// <summary>Streams a generated dummy file of the exact requested byte size.</summary>
     /// <param name="type">One of the types returned by <c>GET /api/files/types</c> (e.g. <c>txt</c>, <c>csv</c>, <c>pdf</c>, <c>jpeg</c>, <c>png</c>).</param>
@@ -47,6 +52,15 @@ public class FilesController(IServiceProvider serviceProvider, IOptions<FileGene
             return BadRequest(new ErrorResponse(boundsError!));
         }
 
+        var clientId = ClientIdentifier.GetClientId(HttpContext);
+        var rateLimitResult = await rateLimiter.CheckAsync(clientId, cancellationToken);
+        if (!rateLimitResult.IsAllowed)
+        {
+            Response.Headers.RetryAfter = rateLimitResult.RetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+            return StatusCode(StatusCodes.Status429TooManyRequests, new ErrorResponse(
+                $"Rate limit exceeded: max {rateLimitResult.Limit} requests per hour. Retry after {rateLimitResult.RetryAfterSeconds} seconds."));
+        }
+
         Response.ContentType = generator.MimeType;
         Response.Headers.ContentDisposition = $"attachment; filename=\"dummy.{generator.FileExtension}\"";
         Response.ContentLength = targetSizeBytes;
@@ -59,7 +73,7 @@ public class FilesController(IServiceProvider serviceProvider, IOptions<FileGene
         dbContext.GenerationRequests.Add(new GenerationRequest
         {
             Id = Guid.NewGuid(),
-            ClientId = ClientIdentifier.GetClientId(HttpContext),
+            ClientId = clientId,
             FileType = generator.TypeKey,
             RequestedSizeBytes = targetSizeBytes,
             ActualSizeBytes = countingBody.BytesWritten,

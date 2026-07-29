@@ -4,6 +4,7 @@ using DummyFileApi.Data;
 using DummyFileApi.Generators;
 using DummyFileApi.Models;
 using DummyFileApi.Options;
+using DummyFileApi.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
@@ -25,7 +26,7 @@ public class FilesControllerTests
         return db;
     }
 
-    private static (FilesController Controller, AppDbContext Db) CreateController(long maxSizeBytes = 104_857_600)
+    private static (FilesController Controller, AppDbContext Db) CreateController(long maxSizeBytes = 104_857_600, int maxPerHour = 100)
     {
         var services = new ServiceCollection();
         foreach (var (key, impl) in FileGeneratorRegistry.All)
@@ -35,15 +36,17 @@ public class FilesControllerTests
 
         var provider = services.BuildServiceProvider();
         var options = Microsoft.Extensions.Options.Options.Create(new FileGenerationOptions { MaxSizeBytes = maxSizeBytes });
+        var rateLimitingOptions = Microsoft.Extensions.Options.Options.Create(new RateLimitingOptions { MaxPerHour = maxPerHour });
         var db = CreateInMemoryDb();
+        var rateLimiter = new GenerationRateLimiter(db, rateLimitingOptions);
 
-        return (new FilesController(provider, options, db), db);
+        return (new FilesController(provider, options, db, rateLimiter), db);
     }
 
     private static (FilesController Controller, AppDbContext Db, MemoryStream ResponseBody) CreateControllerWithHttpContext(
-        long maxSizeBytes = 104_857_600, string clientIp = "127.0.0.1")
+        long maxSizeBytes = 104_857_600, string clientIp = "127.0.0.1", int maxPerHour = 100)
     {
-        var (controller, db) = CreateController(maxSizeBytes);
+        var (controller, db) = CreateController(maxSizeBytes, maxPerHour);
         var responseBody = new MemoryStream();
         var httpContext = new DefaultHttpContext();
         httpContext.Response.Body = responseBody;
@@ -159,6 +162,51 @@ public class FilesControllerTests
         var error = Assert.IsType<ErrorResponse>(badRequest.Value);
         Assert.Contains("must not exceed", error.Error);
         Assert.Equal(0, responseBody.Length);
+    }
+
+    [Fact]
+    public async Task Generate_RateLimitExceeded_Returns429WithRetryAfterAndDoesNotWriteBodyOrRow()
+    {
+        var (controller, db, responseBody) = CreateControllerWithHttpContext(clientIp: "10.5.5.5", maxPerHour: 1);
+        db.GenerationRequests.Add(CreateRow("10.5.5.5", DateTime.UtcNow.AddMinutes(-1)));
+        await db.SaveChangesAsync();
+
+        var result = await controller.Generate(type: "txt", size: "1KB", seed: null, cancellationToken: CancellationToken.None);
+
+        var tooManyRequests = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status429TooManyRequests, tooManyRequests.StatusCode);
+        var error = Assert.IsType<ErrorResponse>(tooManyRequests.Value);
+        Assert.Contains("Rate limit exceeded", error.Error);
+        Assert.True(int.Parse(controller.Response.Headers.RetryAfter.ToString()) > 0);
+        Assert.Equal(0, responseBody.Length);
+        Assert.Single(db.GenerationRequests.ToList());
+    }
+
+    [Fact]
+    public async Task Generate_UnderRateLimit_Succeeds()
+    {
+        var (controller, db, responseBody) = CreateControllerWithHttpContext(clientIp: "10.5.5.6", maxPerHour: 2);
+        db.GenerationRequests.Add(CreateRow("10.5.5.6", DateTime.UtcNow.AddMinutes(-1)));
+        await db.SaveChangesAsync();
+
+        var result = await controller.Generate(type: "txt", size: "1KB", seed: null, cancellationToken: CancellationToken.None);
+
+        Assert.IsType<EmptyResult>(result);
+        Assert.Equal(1024, responseBody.Length);
+        Assert.Equal(2, db.GenerationRequests.ToList().Count);
+    }
+
+    [Fact]
+    public async Task Generate_PriorRequestsOutsideWindow_DoNotCountTowardLimit()
+    {
+        var (controller, db, responseBody) = CreateControllerWithHttpContext(clientIp: "10.5.5.7", maxPerHour: 1);
+        db.GenerationRequests.Add(CreateRow("10.5.5.7", DateTime.UtcNow.AddHours(-2)));
+        await db.SaveChangesAsync();
+
+        var result = await controller.Generate(type: "txt", size: "1KB", seed: null, cancellationToken: CancellationToken.None);
+
+        Assert.IsType<EmptyResult>(result);
+        Assert.Equal(1024, responseBody.Length);
     }
 
     [Fact]

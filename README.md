@@ -27,6 +27,10 @@ Size units are binary: `KB` = 1024 bytes, `MB` = 1024² bytes (`KiB`/`MiB` are a
 curl -OJ "http://localhost:5119/api/files/generate?type=txt&size=100KB"
 ```
 
+`/api/files/generate` is rate-limited per client IP: a sliding 1-hour window, `100` requests by default (`RateLimiting:MaxPerHour`). Over the limit returns `429` with a `Retry-After` header (seconds until the oldest counted request ages out of the window).
+
+If deployed behind a reverse proxy (e.g. a PaaS host that terminates TLS in front of the app), set `Proxy:TrustForwardedHeaders` to `true` so client IPs (used for history and rate limiting) come from `X-Forwarded-For` instead of the proxy's own address. Leaving it `false` while actually behind a proxy pools every real client into the proxy's single IP, sharing one rate-limit bucket and history. Leave it `false` (the default) when running directly — trusting that header without an actual proxy in front lets a client spoof its IP to bypass the rate limit; even with a proxy, this app trusts whatever the immediate hop sends with no proxy IP allowlist, so it's only appropriate when the app isn't also reachable directly around that proxy.
+
 # Libraries used
 
 **API** (`src/DummyFileApi`):

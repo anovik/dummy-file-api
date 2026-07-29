@@ -1,6 +1,7 @@
 using DummyFileApi.Data;
 using DummyFileApi.Generators;
 using DummyFileApi.Options;
+using DummyFileApi.Services;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -27,15 +28,25 @@ builder.Services.AddSwaggerGen(options =>
 });
 builder.Services.Configure<FileGenerationOptions>(
     builder.Configuration.GetSection(FileGenerationOptions.SectionName));
+builder.Services.Configure<RateLimitingOptions>(
+    builder.Configuration.GetSection(RateLimitingOptions.SectionName));
+builder.Services.AddScoped<GenerationRateLimiter>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default") ?? "Data Source=dummyfileapi.db"));
 
+// Off by default: without a real proxy overwriting it, a client could set
+// X-Forwarded-For itself to spoof its ClientId and dodge the rate limit.
+// Even then, this trusts the immediate hop with no proxy IP allowlist.
+var trustForwardedHeaders = builder.Configuration.GetValue<bool>("Proxy:TrustForwardedHeaders");
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
+    if (!trustForwardedHeaders)
+    {
+        return;
+    }
+
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    // ClientId only drives history and rate-limit fairness, not security, so
-    // trusting X-Forwarded-For without a proxy allowlist is acceptable here.
     options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
 });
