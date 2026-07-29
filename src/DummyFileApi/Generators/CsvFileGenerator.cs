@@ -51,7 +51,16 @@ public sealed class CsvFileGenerator : IFileGenerator
         await WriteAsciiAsync(Header);
 
         var remaining = targetSizeBytes - Header.Length;
-        var row = 1L;
+
+        // seed picks the starting row Id. Falls back to 1 if seed is
+        // non-positive, or if that Id wouldn't fit the requested size —
+        // so any size >= MinSizeBytes always succeeds.
+        var row = seed is int s && s >= 1 ? (long)s : 1L;
+        if (remaining < RowPrefix(row).Length + NewLine.Length)
+        {
+            row = 1L;
+        }
+
         while (true)
         {
             var fullRow = $"{RowPrefix(row)}Value-{row}{NewLine}";

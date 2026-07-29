@@ -16,6 +16,13 @@ ASP.NET Core Web API that generates structurally valid dummy files of an exact r
 
 Size units are binary: `KB` = 1024 bytes, `MB` = 1024² bytes (`KiB`/`MiB` are accepted as aliases). Decimal values like `1.5MB` work too.
 
+`seed`'s effect depends on the type:
+- `png` / `jpeg` / `pdf` — picks the checkerboard fill color from a fixed palette (omit for the first color)
+- `csv` — sets the starting row `Id`, rows counting up from there (omit, or pass a non-positive value, for 1;
+  a huge seed combined with a near-minimum size also falls back to 1, since the requested size can't fit
+  that many Id digits)
+- `txt` — ignored; exact-size filler text needs no seed-driven variation
+
 ```bash
 curl -OJ "http://localhost:5119/api/files/generate?type=txt&size=100KB"
 ```
