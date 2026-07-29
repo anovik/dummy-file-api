@@ -15,6 +15,8 @@ public sealed class TxtFileGenerator : IFileGenerator
     // An empty text file is valid; 1 is a basic sanity floor, not a format requirement.
     public long MinSizeBytes => 1;
 
+    // seed is intentionally ignored: filler text needs no seed-driven variation
+    // to hit an exact byte count, unlike the image formats' color picker.
     public async Task GenerateAsync(Stream output, long targetSizeBytes, int? seed, CancellationToken cancellationToken = default)
     {
         if (targetSizeBytes < MinSizeBytes)

@@ -81,6 +81,65 @@ public class CsvFileGeneratorTests
         Assert.Equal(first.ToArray(), second.ToArray());
     }
 
+    [Theory]
+    [InlineData(42)]
+    [InlineData(1000)]
+    public async Task GenerateAsync_SeedSetsStartingRowId(int seed)
+    {
+        using var stream = new MemoryStream();
+        await _generator.GenerateAsync(stream, targetSizeBytes: 1024, seed);
+        stream.Position = 0;
+
+        using var reader = new StreamReader(stream, Encoding.ASCII);
+        using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
+        csv.Read();
+        csv.ReadHeader();
+        csv.Read();
+
+        Assert.Equal(seed.ToString(CultureInfo.InvariantCulture), csv.GetField(0));
+        Assert.Equal($"Item-{seed}", csv.GetField(1));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public async Task GenerateAsync_NonPositiveSeed_FallsBackToRowOne(int seed)
+    {
+        using var stream = new MemoryStream();
+        await _generator.GenerateAsync(stream, targetSizeBytes: 1024, seed);
+        stream.Position = 0;
+
+        using var reader = new StreamReader(stream, Encoding.ASCII);
+        using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
+        csv.Read();
+        csv.ReadHeader();
+        csv.Read();
+
+        Assert.Equal("1", csv.GetField(0));
+        Assert.Equal("Item-1", csv.GetField(1));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_SeedTooLargeForRequestedSize_FallsBackToRowOne()
+    {
+        // MinSizeBytes assumes a single-digit starting Id; a seed whose digit
+        // count doesn't fit at the smallest valid size must not crash or
+        // break the exact-size guarantee.
+        using var stream = new MemoryStream();
+        await _generator.GenerateAsync(stream, targetSizeBytes: _generator.MinSizeBytes, seed: 999_999_999);
+        stream.Position = 0;
+
+        Assert.Equal(_generator.MinSizeBytes, stream.Length);
+
+        using var reader = new StreamReader(stream, Encoding.ASCII);
+        using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
+        csv.Read();
+        csv.ReadHeader();
+        csv.Read();
+
+        Assert.Equal("1", csv.GetField(0));
+    }
+
     [Fact]
     public async Task GenerateAsync_BelowMinSize_Throws()
     {

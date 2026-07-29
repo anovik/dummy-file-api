@@ -36,6 +36,20 @@ public class TxtFileGeneratorTests
     }
 
     [Fact]
+    public async Task GenerateAsync_SeedIsIgnored()
+    {
+        // txt content doesn't vary by seed — an exact byte count needs no
+        // seed-driven variation, unlike the image formats' color picker.
+        using var unseeded = new MemoryStream();
+        using var seeded = new MemoryStream();
+
+        await _generator.GenerateAsync(unseeded, targetSizeBytes: 500, seed: null);
+        await _generator.GenerateAsync(seeded, targetSizeBytes: 500, seed: 42);
+
+        Assert.Equal(unseeded.ToArray(), seeded.ToArray());
+    }
+
+    [Fact]
     public async Task GenerateAsync_BelowMinSize_Throws()
     {
         using var stream = new MemoryStream();

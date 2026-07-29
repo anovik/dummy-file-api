@@ -16,6 +16,17 @@ namespace DummyFileApi.Controllers;
 [Route("api/files")]
 public class FilesController(IServiceProvider serviceProvider, IOptions<FileGenerationOptions> options, AppDbContext dbContext) : ControllerBase
 {
+    /// <summary>Streams a generated dummy file of the exact requested byte size.</summary>
+    /// <param name="type">One of the types returned by <c>GET /api/files/types</c> (e.g. <c>txt</c>, <c>csv</c>, <c>pdf</c>, <c>jpeg</c>, <c>png</c>).</param>
+    /// <param name="size">Human-readable size, binary units (e.g. <c>100KB</c> = 102,400 bytes, <c>1MB</c> = 1,048,576 bytes). <c>KiB</c>/<c>MiB</c> are accepted aliases.</param>
+    /// <param name="seed">
+    /// Optional, meaning varies by type:
+    /// <c>png</c>/<c>jpeg</c>/<c>pdf</c> use it to pick the checkerboard fill color from a fixed palette
+    /// (omit for the first palette color); <c>csv</c> uses it as the starting row Id, rows counting up from
+    /// there (omit, or pass a non-positive value, for 1; also falls back to 1 if the requested size is too
+    /// small to fit even one row at that Id); <c>txt</c> ignores it entirely.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token for the request.</param>
     [HttpGet("generate")]
     public async Task<IActionResult> Generate([FromQuery] string? type, [FromQuery] string? size, [FromQuery] int? seed, CancellationToken cancellationToken)
     {
@@ -63,6 +74,7 @@ public class FilesController(IServiceProvider serviceProvider, IOptions<FileGene
         return new EmptyResult();
     }
 
+    /// <summary>Lists supported file types with MIME type, extension, and min/max allowed size.</summary>
     [HttpGet("types")]
     public IActionResult GetTypes()
     {
@@ -81,6 +93,7 @@ public class FilesController(IServiceProvider serviceProvider, IOptions<FileGene
         return Ok(types);
     }
 
+    /// <summary>Paged history of past generation requests for the calling client (identified by IP), newest first.</summary>
     [HttpGet("history")]
     public async Task<IActionResult> GetHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default)
     {
