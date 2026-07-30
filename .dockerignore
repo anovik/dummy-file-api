@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/.vs/
+**/logs/
+*.db
+*.db-shm
+*.db-wal
+.git/
+.github/
+*.md
+src/DummyFileApi.Tests/
