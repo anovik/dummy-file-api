@@ -2,6 +2,12 @@
 
 ASP.NET Core Web API that generates structurally valid dummy files of an exact requested byte size
 
+**Live demo:** https://dummy-file-api-production.up.railway.app
+
+1. See supported types and their size limits: [`/api/files/types`](https://dummy-file-api-production.up.railway.app/api/files/types)
+2. Download a generated file: [`/api/files/generate?type=txt&size=10KB`](https://dummy-file-api-production.up.railway.app/api/files/generate?type=txt&size=10KB)
+3. See it recorded in your history: [`/api/files/history`](https://dummy-file-api-production.up.railway.app/api/files/history)
+
 # Supported file formats
 - TXT
 - CSV
@@ -90,3 +96,17 @@ To work with EF Core migrations, restore the repo-local `dotnet-ef` tool first:
 dotnet tool restore
 dotnet ef migrations add <MigrationName> --project src/DummyFileApi -o Data/Migrations
 ```
+
+# Deployment
+
+A multi-stage `Dockerfile` at the repo root (`sdk:10.0` build stage → `aspnet:10.0` runtime stage) builds a self-contained image. The live demo runs on [Railway](https://railway.app), deployed straight from this GitHub repo. To reproduce:
+
+1. Connect the repo to a new Railway service — it detects and builds the `Dockerfile` automatically.
+2. Attach a persistent volume (e.g. mounted at `/data`) so the SQLite database survives redeploys; the container filesystem is otherwise wiped on every deploy.
+3. Set these environment variables:
+   - `ConnectionStrings__Default` = `Data Source=/data/dummyfileapi.db` (pointing at the mounted volume)
+   - `Proxy__TrustForwardedHeaders` = `true` (Railway terminates TLS and proxies every request)
+   - `ASPNETCORE_ENVIRONMENT` = `Production`
+4. Generate a public domain for the service.
+
+The app reads a `PORT` env var (set automatically by Railway and most similar PaaS hosts) and binds Kestrel to it, since ASP.NET Core doesn't read that variable natively.
