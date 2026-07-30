@@ -8,6 +8,15 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// PaaS hosts (Railway, Heroku, etc.) assign a dynamic port via $PORT rather
+// than the ASPNETCORE_URLS/ASPNETCORE_HTTP_PORTS env vars ASP.NET Core reads
+// natively.
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(port))
+{
+    builder.WebHost.UseUrls($"http://+:{port}");
+}
+
 builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration)
     .Enrich.FromLogContext()
