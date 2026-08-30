@@ -10,5 +10,6 @@ public static class FileGeneratorRegistry
         ("png", typeof(PngFileGenerator)),
         ("jpeg", typeof(JpegFileGenerator)),
         ("pdf", typeof(PdfFileGenerator)),
+        ("zip", typeof(ZipFileGenerator)),
     ];
 }

@@ -14,6 +14,7 @@ ASP.NET Core Web API that generates structurally valid dummy files of an exact r
 - PDF
 - JPEG
 - PNG
+- ZIP
 
 # API endpoints
 - `GET /api/files/generate?type=txt&size=100KB&seed=42` — streams a dummy file of the exact requested byte size as a download (`seed` is optional)
@@ -24,6 +25,7 @@ Size units are binary: `KB` = 1024 bytes, `MB` = 1024² bytes (`KiB`/`MiB` are a
 
 `seed`'s effect depends on the type:
 - `png` / `jpeg` / `pdf` — picks the checkerboard fill color from a fixed palette (omit for the first color)
+- `zip` — picks the entry's filler phrase from a fixed set (omit for the first); changes the content bytes, not the size
 - `csv` — sets the starting row `Id`, rows counting up from there (omit, or pass a non-positive value, for 1;
   a huge seed combined with a near-minimum size also falls back to 1, since the requested size can't fit
   that many Id digits)
@@ -48,8 +50,9 @@ Every generator hits the requested byte count exactly while staying a structural
 - **pdf** — a minimal valid PDF (Catalog → Pages → Page) with a **dedicated padding object placed last**, just before the xref table, as a legal unreferenced-but-well-formed indirect object. Its own `/Length N` is printed as decimal digits inside the file, so a digit-count change (e.g. `9999` → `10000`) shifts the total size — the generator computes a candidate `N`, builds, checks the actual size against the target, and adjusts by the delta until it converges (1-2 iterations).
 - **png** — an RGBA checkerboard scaled to the requested size, with IDAT written as **hand-rolled "stored" (uncompressed) deflate blocks** — never `DeflateStream`/`ZlibStream`, since the BCL doesn't guarantee byte-stable stored-block output across versions. Because stored-block length depends only on pixel dimensions, not pixel content, the canvas size can be chosen by binary search and the remainder padded exactly with a single `tEXt` chunk (PNG chunk lengths are a 32-bit field, so one chunk always suffices).
 - **jpeg** — the same checkerboard as `png`, drawn as a real baseline JPEG on whole 8×8 blocks so every block is uniform (all AC coefficients zero, so the entropy-coded scan is just DC diffs and end-of-block codes). Its exact byte length — including 0xFF bit-stuffing — is measured with a counting pre-pass through the same bit writer that later streams it, since JPEG's entropy coding is otherwise content-dependent and can't be predicted analytically. Canvas size is chosen by binary search on the measured size; fine padding uses COM marker segments (a 16-bit length field, ~65,533 bytes per segment, chained back to back past that cap).
+- **zip** — a single STORE-method (uncompressed) entry (`readme.txt`) of deterministic filler text, written by a small hand-rolled `ZipWriter` that streams each local header + entry data as it goes and keeps only the tiny central-directory metadata in memory. Every ZIP header field except the entry content is fixed-width binary, so the content length solves for the exact target in one step — `target − overhead`, where `overhead` is the local header + central-directory entry + end-of-central-directory record for the fixed filename. No padding container and no digit-width iteration.
 
-All three binary generators are hand-rolled byte writers rather than built on an imaging/PDF library, since general-purpose encoders don't expose an exact-byte-count knob — the padding mechanism itself is the project's central teaching point.
+The image and PDF generators are hand-rolled byte writers rather than built on an imaging/PDF library, since general-purpose encoders don't expose an exact-byte-count knob — the padding mechanism itself is the project's central teaching point. `ZipWriter` is likewise hand-rolled, and is written to be reused for OOXML formats (a `.docx`/`.xlsx` is a ZIP of fixed XML parts).
 
 # Libraries used
 
@@ -66,6 +69,7 @@ File generation itself uses no imaging or document libraries by design: generato
 - [CsvHelper](https://joshclose.github.io/CsvHelper/) — independent parser validating generated CSVs
 - [SixLabors.ImageSharp](https://sixlabors.com/products/imagesharp/) (3.1.x, split license) — independent decoder validating generated images
 - [PdfPig](https://github.com/UglyToad/PdfPig) (Apache 2.0) — independent parser validating generated PDFs
+- `System.IO.Compression.ZipArchive` (BCL) — independent reader validating generated ZIPs (generation never uses it)
 
 # Requirements
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
