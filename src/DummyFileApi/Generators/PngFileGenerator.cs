@@ -60,7 +60,7 @@ public sealed class PngFileGenerator : IFileGenerator
 
         var side = LargestSideFitting(targetSizeBytes);
         var paddingLength = targetSizeBytes - TotalSizeFor(side);
-        var color = Palette[seed is int s ? ((s % Palette.Length) + Palette.Length) % Palette.Length : 0];
+        var color = Palette[SeedIndex.Wrap(seed, Palette.Length)];
 
         await output.WriteAsync(Signature, cancellationToken);
         await output.WriteAsync(BuildIhdrChunk(side), cancellationToken);

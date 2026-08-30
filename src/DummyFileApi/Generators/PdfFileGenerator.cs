@@ -102,7 +102,7 @@ public sealed class PdfFileGenerator : IFileGenerator
             throw new ArgumentOutOfRangeException(nameof(targetSizeBytes));
         }
 
-        var color = Palette[seed is int s ? ((s % Palette.Length) + Palette.Length) % Palette.Length : 0];
+        var color = Palette[SeedIndex.Wrap(seed, Palette.Length)];
         var tier = SelectGridTier(targetSizeBytes);
         var (pageCount, linesPerPage) = PlanPages(targetSizeBytes, tier);
 

@@ -80,7 +80,7 @@ public sealed class JpegFileGenerator : IFileGenerator
             throw new ArgumentOutOfRangeException(nameof(targetSizeBytes));
         }
 
-        var color = Palette[seed is int s ? ((s % Palette.Length) + Palette.Length) % Palette.Length : 0];
+        var color = Palette[SeedIndex.Wrap(seed, Palette.Length)];
         var (blocksPerSide, scanLength) = LargestCanvasFitting(targetSizeBytes, color);
         var padding = targetSizeBytes - FixedOverhead - scanLength;
 
