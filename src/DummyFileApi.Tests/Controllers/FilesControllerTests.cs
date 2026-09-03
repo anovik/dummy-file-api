@@ -129,7 +129,7 @@ public class FilesControllerTests
     {
         var (controller, db, responseBody) = CreateControllerWithHttpContext();
 
-        var result = await controller.Generate(type: "docx", size: "1KB", seed: null, cancellationToken: CancellationToken.None);
+        var result = await controller.Generate(type: "mp3", size: "1KB", seed: null, cancellationToken: CancellationToken.None);
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         var error = Assert.IsType<ErrorResponse>(badRequest.Value);

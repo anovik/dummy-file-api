@@ -19,6 +19,7 @@ public class GenerateEndpointTests(IntegrationTestWebApplicationFactory factory)
     [InlineData("jpeg", "image/jpeg", "jpg")]
     [InlineData("pdf", "application/pdf", "pdf")]
     [InlineData("zip", "application/zip", "zip")]
+    [InlineData("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx")]
     public async Task Generate_HappyPath_ReturnsExactBodyWithMatchingHeaders(string type, string expectedMimeType, string expectedExtension)
     {
         var response = await _client.SendAsync(Request($"/api/files/generate?type={type}&size=64KB"));
@@ -36,7 +37,7 @@ public class GenerateEndpointTests(IntegrationTestWebApplicationFactory factory)
     [Fact]
     public async Task Generate_UnknownType_ReturnsBadRequestWithValidTypesListed()
     {
-        var response = await _client.SendAsync(Request("/api/files/generate?type=docx&size=1KB"));
+        var response = await _client.SendAsync(Request("/api/files/generate?type=mp3&size=1KB"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var error = await response.Content.ReadFromJsonAsync<ErrorResponse>();

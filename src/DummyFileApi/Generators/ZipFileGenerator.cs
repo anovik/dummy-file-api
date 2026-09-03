@@ -9,20 +9,6 @@ public sealed class ZipFileGenerator : IFileGenerator
     // container and no digit-width iteration, unlike pdf/jpeg/png.
     private static readonly long Overhead = ZipWriter.OverheadFor(EntryName);
 
-    // seed picks the filler phrase. Like png's palette, it changes the bytes
-    // but never the size — content length is fixed by the target regardless.
-    private static readonly byte[][] Phrases =
-    [
-        "The quick brown fox jumps over the lazy dog. "u8.ToArray(),
-        "Pack my box with five dozen liquor jugs. "u8.ToArray(),
-        "How vexingly quick daft zebras jump. "u8.ToArray(),
-        "Sphinx of black quartz, judge my vow. "u8.ToArray(),
-        "The five boxing wizards jump in quickly. "u8.ToArray(),
-        "Jackdaws love my big sphinx of quartz. "u8.ToArray(),
-        "Bright vixens jump; dozy fowl quack. "u8.ToArray(),
-        "Quick zephyrs blow, vexing daft Jim. "u8.ToArray(),
-    ];
-
     public string TypeKey => "zip";
     public string MimeType => "application/zip";
     public string FileExtension => "zip";
@@ -38,7 +24,9 @@ public sealed class ZipFileGenerator : IFileGenerator
         }
 
         var contentLength = targetSizeBytes - Overhead;
-        var phrase = Phrases[SeedIndex.Wrap(seed, Phrases.Length)];
+        // seed picks the filler phrase. Like png's palette, it changes the bytes
+        // but never the size — content length is fixed by the target regardless.
+        var phrase = FillerPhrases.AllBytes[SeedIndex.Wrap(seed, FillerPhrases.AllBytes.Length)];
         var crc = ZipWriter.RepeatingCrc32(phrase, contentLength);
 
         var writer = new ZipWriter(output);

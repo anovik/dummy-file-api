@@ -22,7 +22,7 @@ public class RequestValidationTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("doc")]
-    [InlineData("docx")]
+    [InlineData("mp3")]
     public void TryValidateType_UnknownType_ReturnsFalseWithError(string? type)
     {
         var result = RequestValidation.TryValidateType(type, out _, out var error);

@@ -144,8 +144,20 @@ public sealed class ZipWriter(Stream output)
     /// must stream the identical bytes.
     /// </summary>
     public static uint RepeatingCrc32(byte[] pattern, long length)
+        => FramedRepeatingCrc32(default, pattern, length, default);
+
+    /// <summary>
+    /// CRC-32 of <paramref name="prefix"/>, then <paramref name="length"/> bytes of
+    /// <paramref name="pattern"/> repeated from its start, then <paramref name="suffix"/> —
+    /// the pre-pass companion to <see cref="WriteFramedRepeatingAsync"/>, for an entry
+    /// whose fixed text wraps a repeating filler body.
+    /// </summary>
+    public static uint FramedRepeatingCrc32(
+        ReadOnlySpan<byte> prefix, byte[] pattern, long length, ReadOnlySpan<byte> suffix)
     {
         var crc = new Crc32();
+        crc.Append(prefix);
+
         var chunk = new byte[(int)Math.Min(MaxChunkSize, Math.Max(length, 1))];
         var patternIndex = 0;
         var remaining = length;
@@ -157,12 +169,27 @@ public sealed class ZipWriter(Stream output)
             remaining -= count;
         }
 
+        crc.Append(suffix);
         return crc.GetCurrentHashAsUInt32();
     }
 
     /// <summary>Streams <paramref name="length"/> bytes of <paramref name="pattern"/> repeated from its start.</summary>
-    public static async Task WriteRepeatingAsync(Stream output, byte[] pattern, long length, CancellationToken cancellationToken)
+    public static Task WriteRepeatingAsync(Stream output, byte[] pattern, long length, CancellationToken cancellationToken)
+        => WriteFramedRepeatingAsync(output, default, pattern, length, default, cancellationToken);
+
+    /// <summary>
+    /// Streams <paramref name="prefix"/>, then <paramref name="length"/> bytes of
+    /// <paramref name="pattern"/> repeated from its start, then <paramref name="suffix"/>.
+    /// </summary>
+    public static async Task WriteFramedRepeatingAsync(
+        Stream output, ReadOnlyMemory<byte> prefix, byte[] pattern, long length,
+        ReadOnlyMemory<byte> suffix, CancellationToken cancellationToken)
     {
+        if (!prefix.IsEmpty)
+        {
+            await output.WriteAsync(prefix, cancellationToken);
+        }
+
         var chunk = new byte[(int)Math.Min(MaxChunkSize, Math.Max(length, 1))];
         var patternIndex = 0;
         var remaining = length;
@@ -172,6 +199,11 @@ public sealed class ZipWriter(Stream output)
             FillRepeating(chunk.AsSpan(0, count), pattern, ref patternIndex);
             await output.WriteAsync(chunk.AsMemory(0, count), cancellationToken);
             remaining -= count;
+        }
+
+        if (!suffix.IsEmpty)
+        {
+            await output.WriteAsync(suffix, cancellationToken);
         }
     }
 
