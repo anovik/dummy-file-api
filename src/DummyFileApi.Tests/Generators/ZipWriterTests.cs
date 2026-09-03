@@ -69,6 +69,23 @@ public class ZipWriterTests
     }
 
     [Fact]
+    public async Task FramedRepeatingCrc32_MatchesTheBytesWriteFramedRepeatingProduces()
+    {
+        var prefix = "<w:t xml:space=\"preserve\">"u8.ToArray();
+        var pattern = "abcdefghij"u8.ToArray();
+        var suffix = "</w:t>"u8.ToArray();
+        const long length = 65536 + 55; // spans an internal chunk boundary
+
+        using var written = new MemoryStream();
+        await ZipWriter.WriteFramedRepeatingAsync(
+            written, prefix, pattern, length, suffix, CancellationToken.None);
+
+        Assert.Equal(prefix.Length + length + suffix.Length, written.Length);
+        var expected = System.IO.Hashing.Crc32.HashToUInt32(written.ToArray());
+        Assert.Equal(expected, ZipWriter.FramedRepeatingCrc32(prefix, pattern, length, suffix));
+    }
+
+    [Fact]
     public async Task AddEntryAsync_EntryPastFourGiB_ThrowsInsteadOfTruncating()
     {
         using var stream = new MemoryStream();
