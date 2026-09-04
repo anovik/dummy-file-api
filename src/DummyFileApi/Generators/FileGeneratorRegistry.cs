@@ -12,5 +12,6 @@ public static class FileGeneratorRegistry
         ("pdf", typeof(PdfFileGenerator)),
         ("zip", typeof(ZipFileGenerator)),
         ("docx", typeof(DocxFileGenerator)),
+        ("xlsx", typeof(XlsxFileGenerator)),
     ];
 }

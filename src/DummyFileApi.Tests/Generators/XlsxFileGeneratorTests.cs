@@ -1,0 +1,190 @@
+using System.IO.Compression;
+using System.Xml.Linq;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Spreadsheet;
+using DocumentFormat.OpenXml.Validation;
+using DummyFileApi.Generators;
+
+namespace DummyFileApi.Tests.Generators;
+
+public class XlsxFileGeneratorTests
+{
+    private readonly XlsxFileGenerator _generator = new();
+
+    public static IEnumerable<object[]> TargetSizes()
+    {
+        var min = new XlsxFileGenerator().MinSizeBytes;
+        yield return [min]; // header row + one empty final row
+        yield return [min + 1];
+        yield return [4096L];
+        yield return [65536L];
+        yield return [min + 65536]; // rows span exactly one internal chunk
+        yield return [min + 65537];
+        yield return [2 * 1024 * 1024 + 7L];
+    }
+
+    [Theory]
+    [MemberData(nameof(TargetSizes))]
+    public async Task GenerateAsync_ProducesExactRequestedByteCount(long targetSizeBytes)
+    {
+        using var stream = new MemoryStream();
+
+        await _generator.GenerateAsync(stream, targetSizeBytes, seed: null);
+
+        Assert.Equal(targetSizeBytes, stream.Length);
+    }
+
+    [Theory]
+    [MemberData(nameof(TargetSizes))]
+    public async Task GenerateAsync_OpensAsASchemaValidSpreadsheet(long targetSizeBytes)
+    {
+        using var stream = new MemoryStream();
+        await _generator.GenerateAsync(stream, targetSizeBytes, seed: 3);
+        stream.Position = 0;
+
+        using var doc = SpreadsheetDocument.Open(stream, isEditable: false);
+
+        var sheetData = doc.WorkbookPart!.WorksheetParts.Single().Worksheet.GetFirstChild<SheetData>();
+        Assert.NotNull(sheetData);
+
+        var errors = new OpenXmlValidator().Validate(doc).ToList();
+        Assert.True(errors.Count == 0, string.Join("; ", errors.Select(e => e.Description)));
+
+        var rows = sheetData!.Elements<Row>().ToList();
+        Assert.True(rows.Count >= 2); // header + at least the final row
+        Assert.Equal("1", rows[0].RowIndex!.Value.ToString());
+        // Row indices are contiguous from 1.
+        for (var i = 0; i < rows.Count; i++)
+        {
+            Assert.Equal((uint)(i + 1), rows[i].RowIndex!.Value);
+        }
+    }
+
+    [Fact]
+    public async Task GenerateAsync_AtMinSize_HasOnlyHeaderAndOneEmptyFinalRow()
+    {
+        using var stream = new MemoryStream();
+        await _generator.GenerateAsync(stream, _generator.MinSizeBytes, seed: null);
+        stream.Position = 0;
+
+        using var doc = SpreadsheetDocument.Open(stream, isEditable: false);
+        var rows = doc.WorkbookPart!.WorksheetParts.Single().Worksheet
+            .GetFirstChild<SheetData>()!.Elements<Row>().ToList();
+
+        Assert.Equal(2, rows.Count);
+        var finalCells = rows[1].Elements<Cell>().ToList();
+        Assert.Equal("A2", finalCells[0].CellReference!.Value);
+        Assert.Equal("1", finalCells[0].CellValue!.Text);
+        Assert.Equal(CellValues.InlineString, finalCells[1].DataType!.Value);
+        Assert.Equal(string.Empty, finalCells[1].InlineString!.Text!.Text);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_SeededStartingId_CountsUpFromThatValue()
+    {
+        using var stream = new MemoryStream();
+        await _generator.GenerateAsync(stream, targetSizeBytes: 8192, seed: 500);
+        stream.Position = 0;
+
+        using var doc = SpreadsheetDocument.Open(stream, isEditable: false);
+        var rows = doc.WorkbookPart!.WorksheetParts.Single().Worksheet
+            .GetFirstChild<SheetData>()!.Elements<Row>().ToList();
+
+        // rows[0] is the header; the first data row carries the seeded Id.
+        Assert.Equal("500", rows[1].Elements<Cell>().Single().CellValue!.Text);
+        Assert.Equal("501", rows[2].Elements<Cell>().Single().CellValue!.Text);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_SeedChangesBytesButNotSize()
+    {
+        using var first = new MemoryStream();
+        using var second = new MemoryStream();
+
+        await _generator.GenerateAsync(first, targetSizeBytes: 8192, seed: null);
+        await _generator.GenerateAsync(second, targetSizeBytes: 8192, seed: 42);
+
+        Assert.Equal(first.Length, second.Length);
+        Assert.NotEqual(first.ToArray(), second.ToArray());
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(int.MinValue)]
+    public async Task GenerateAsync_NonPositiveSeed_ProducesValidOutputStartingAtId1(int seed)
+    {
+        using var stream = new MemoryStream();
+
+        await _generator.GenerateAsync(stream, targetSizeBytes: 8192, seed: seed);
+
+        Assert.Equal(8192, stream.Length);
+        stream.Position = 0;
+        using var doc = SpreadsheetDocument.Open(stream, isEditable: false);
+        var rows = doc.WorkbookPart!.WorksheetParts.Single().Worksheet
+            .GetFirstChild<SheetData>()!.Elements<Row>().ToList();
+        Assert.Equal("1", rows[1].Elements<Cell>().Single().CellValue!.Text);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_LargeSeedNearMinSize_FallsBackToId1AndStaysExact()
+    {
+        var target = _generator.MinSizeBytes + 4;
+        using var stream = new MemoryStream();
+
+        await _generator.GenerateAsync(stream, target, seed: 999_999_999);
+
+        Assert.Equal(target, stream.Length);
+        stream.Position = 0;
+        using var doc = SpreadsheetDocument.Open(stream, isEditable: false);
+        var rows = doc.WorkbookPart!.WorksheetParts.Single().Worksheet
+            .GetFirstChild<SheetData>()!.Elements<Row>().ToList();
+        Assert.Equal("1", rows[^1].Elements<Cell>().First().CellValue!.Text);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_IsDeterministic()
+    {
+        using var first = new MemoryStream();
+        using var second = new MemoryStream();
+
+        await _generator.GenerateAsync(first, targetSizeBytes: 50_000, seed: 3);
+        await _generator.GenerateAsync(second, targetSizeBytes: 50_000, seed: 3);
+
+        Assert.Equal(first.ToArray(), second.ToArray());
+    }
+
+    [Fact]
+    public async Task GenerateAsync_BelowMinSize_Throws()
+    {
+        using var stream = new MemoryStream();
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => _generator.GenerateAsync(stream, _generator.MinSizeBytes - 1, seed: null));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_ArchiveHoldsExactlyTheSevenOoxmlPartsAsStoredXml()
+    {
+        using var stream = new MemoryStream();
+        await _generator.GenerateAsync(stream, targetSizeBytes: 16_384, seed: null);
+        stream.Position = 0;
+
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+
+        Assert.Equal(
+            [
+                "[Content_Types].xml", "_rels/.rels", "xl/_rels/workbook.xml.rels",
+                "xl/workbook.xml", "docProps/core.xml", "docProps/app.xml",
+                "xl/worksheets/sheet1.xml",
+            ],
+            archive.Entries.Select(e => e.FullName));
+
+        foreach (var entry in archive.Entries)
+        {
+            Assert.Equal(entry.Length, entry.CompressedLength); // STORE: no compression
+            using var entryStream = entry.Open();
+            Assert.NotNull(XDocument.Load(entryStream)); // every part is well-formed XML
+        }
+    }
+}
