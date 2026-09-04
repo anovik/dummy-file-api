@@ -44,15 +44,11 @@ public class XlsxFileGeneratorTests
 
         using var doc = SpreadsheetDocument.Open(stream, isEditable: false);
 
-        var sheetData = doc.WorkbookPart!.WorksheetParts.Single().Worksheet.GetFirstChild<SheetData>();
-        Assert.NotNull(sheetData);
-
         var errors = new OpenXmlValidator().Validate(doc).ToList();
         Assert.True(errors.Count == 0, string.Join("; ", errors.Select(e => e.Description)));
 
-        var rows = sheetData!.Elements<Row>().ToList();
+        var rows = RowsOf(doc);
         Assert.True(rows.Count >= 2); // header + at least the final row
-        Assert.Equal("1", rows[0].RowIndex!.Value.ToString());
         // Row indices are contiguous from 1.
         for (var i = 0; i < rows.Count; i++)
         {
@@ -68,8 +64,7 @@ public class XlsxFileGeneratorTests
         stream.Position = 0;
 
         using var doc = SpreadsheetDocument.Open(stream, isEditable: false);
-        var rows = doc.WorkbookPart!.WorksheetParts.Single().Worksheet
-            .GetFirstChild<SheetData>()!.Elements<Row>().ToList();
+        var rows = RowsOf(doc);
 
         Assert.Equal(2, rows.Count);
         var finalCells = rows[1].Elements<Cell>().ToList();
@@ -87,8 +82,7 @@ public class XlsxFileGeneratorTests
         stream.Position = 0;
 
         using var doc = SpreadsheetDocument.Open(stream, isEditable: false);
-        var rows = doc.WorkbookPart!.WorksheetParts.Single().Worksheet
-            .GetFirstChild<SheetData>()!.Elements<Row>().ToList();
+        var rows = RowsOf(doc);
 
         // rows[0] is the header; the first data row carries the seeded Id.
         Assert.Equal("500", rows[1].Elements<Cell>().Single().CellValue!.Text);
@@ -121,9 +115,7 @@ public class XlsxFileGeneratorTests
         Assert.Equal(8192, stream.Length);
         stream.Position = 0;
         using var doc = SpreadsheetDocument.Open(stream, isEditable: false);
-        var rows = doc.WorkbookPart!.WorksheetParts.Single().Worksheet
-            .GetFirstChild<SheetData>()!.Elements<Row>().ToList();
-        Assert.Equal("1", rows[1].Elements<Cell>().Single().CellValue!.Text);
+        Assert.Equal("1", RowsOf(doc)[1].Elements<Cell>().Single().CellValue!.Text);
     }
 
     [Fact]
@@ -137,9 +129,7 @@ public class XlsxFileGeneratorTests
         Assert.Equal(target, stream.Length);
         stream.Position = 0;
         using var doc = SpreadsheetDocument.Open(stream, isEditable: false);
-        var rows = doc.WorkbookPart!.WorksheetParts.Single().Worksheet
-            .GetFirstChild<SheetData>()!.Elements<Row>().ToList();
-        Assert.Equal("1", rows[^1].Elements<Cell>().First().CellValue!.Text);
+        Assert.Equal("1", RowsOf(doc)[^1].Elements<Cell>().First().CellValue!.Text);
     }
 
     [Fact]
@@ -186,5 +176,13 @@ public class XlsxFileGeneratorTests
             using var entryStream = entry.Open();
             Assert.NotNull(XDocument.Load(entryStream)); // every part is well-formed XML
         }
+    }
+
+    private static List<Row> RowsOf(SpreadsheetDocument doc)
+    {
+        var worksheet = doc.WorkbookPart!.WorksheetParts.Single().Worksheet;
+        var sheetData = worksheet!.GetFirstChild<SheetData>();
+        Assert.NotNull(sheetData);
+        return sheetData.Elements<Row>().ToList();
     }
 }
