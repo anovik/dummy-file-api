@@ -17,6 +17,7 @@ ASP.NET Core Web API that generates structurally valid dummy files of an exact r
 - ZIP
 - DOCX
 - XLSX
+- JSON
 
 # API endpoints
 - `GET /api/files/generate?type=txt&size=100KB&seed=42` — streams a dummy file of the exact requested byte size as a download (`seed` is optional)
@@ -28,9 +29,9 @@ Size units are binary: `KB` = 1024 bytes, `MB` = 1024² bytes (`KiB`/`MiB` are a
 `seed`'s effect depends on the type:
 - `png` / `jpeg` / `pdf` — picks the checkerboard fill color from a fixed palette (omit for the first color)
 - `zip` / `docx` — picks the filler phrase from a fixed set (omit for the first); changes the content bytes, not the size
-- `csv` / `xlsx` — sets the starting row `Id`, rows counting up from there (omit, or pass a non-positive value, for 1;
-  a huge seed combined with a near-minimum size also falls back to 1, since the requested size can't fit
-  that many Id digits)
+- `csv` / `xlsx` / `json` — sets the starting row/record `Id`, counting up from there (omit, or pass a non-positive
+  value, for 1; a huge seed combined with a near-minimum size also falls back to 1, since the requested size can't
+  fit that many Id digits)
 - `txt` — ignored; exact-size filler text needs no seed-driven variation
 
 ```bash
@@ -55,6 +56,7 @@ Every generator hits the requested byte count exactly while staying a structural
 - **zip** — a single STORE-method (uncompressed) entry (`readme.txt`) of deterministic filler text, written by a small hand-rolled `ZipWriter` that streams each local header + entry data as it goes and keeps only the tiny central-directory metadata in memory. Every ZIP header field except the entry content is fixed-width binary, so the content length solves for the exact target in one step — `target − overhead`, where `overhead` is the local header + central-directory entry + end-of-central-directory record for the fixed filename. No padding container and no digit-width iteration.
 - **docx** — an OOXML package: the same `ZipWriter` storing the six minimal Word parts (`[Content_Types].xml`, the two `.rels` parts, `word/document.xml`, `docProps/core.xml`, `docProps/app.xml`). Every part is fixed except one filler paragraph in `word/document.xml` whose `<w:t>` text (safe ASCII, no XML-escaping) is sized to consume the exact remainder — the same one-step solve as `zip`, with the ZIP overhead plus the fixed XML now the constant.
 - **xlsx** — an OOXML package: the same `ZipWriter` storing seven minimal spreadsheet parts (`[Content_Types].xml`, the two `.rels` parts, `xl/workbook.xml`, `xl/worksheets/sheet1.xml`, `docProps/core.xml`, `docProps/app.xml`), no `styles.xml`/`sharedStrings.xml`. Only the rows in `sheet1.xml` vary: a header row, then numeric `<row>`s counting up from the `seed` Id, then — because each row's digit width drifts as the numbers grow — a **final row whose inline-string cell** is sized to consume the exact remainder (`csv`'s last-field technique). The sheet is generated once to compute its CRC for the ZIP local header, then again to stream it.
+- **json** — `{"meta":{"count":N},"records":[{"id":K,"value":"..."}, ...]}`. Full records with short `"item-K"` values are written until less than one more fits, then the **final record's `value` string** is sized to land on the exact byte count (`csv`'s last-field technique again; the filler is plain ASCII so no JSON escaping perturbs the length). `count` is the record total, and its own printed digits are part of the file, so — like `pdf`'s `/Length` — the record count is settled by a short fixed-point pass (widen the reserved digits until the simulated count fits) before streaming; any leftover width the final record absorbs.
 
 The image and PDF generators are hand-rolled byte writers rather than built on an imaging/PDF library, since general-purpose encoders don't expose an exact-byte-count knob — the padding mechanism itself is the project's central teaching point. `ZipWriter` is likewise hand-rolled, and is reused for the OOXML formats (a `.docx`/`.xlsx` is a ZIP of fixed XML parts).
 
