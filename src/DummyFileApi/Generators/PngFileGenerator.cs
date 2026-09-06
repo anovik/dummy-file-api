@@ -73,8 +73,8 @@ public sealed class PngFileGenerator : IFileGenerator
     private static long TotalSizeFor(int side)
     {
         var raw = RawImageLength(side);
-        var blocks = (raw + ushort.MaxValue - 1) / ushort.MaxValue;
-        var zlib = 2 + 5 * blocks + raw + 4;
+        var blocks = StoredDeflate.BlockCount(raw);
+        var zlib = 2 + StoredDeflate.BlockHeaderSize * blocks + raw + 4;
         var emptyText = 4 + 4 + PaddingKeyword.Length + 1 + 4;
         return SignatureLength + IhdrChunkLength + (12 + zlib) + emptyText + IendChunkLength;
     }
@@ -104,8 +104,8 @@ public sealed class PngFileGenerator : IFileGenerator
     private static async Task WriteIdatAsync(Stream output, int side, byte[] color, CancellationToken cancellationToken)
     {
         var rawLength = RawImageLength(side);
-        var blockCount = (rawLength + ushort.MaxValue - 1) / ushort.MaxValue;
-        var zlibLength = 2 + 5 * blockCount + rawLength + 4;
+        var blockCount = StoredDeflate.BlockCount(rawLength);
+        var zlibLength = 2 + StoredDeflate.BlockHeaderSize * blockCount + rawLength + 4;
 
         var header = new byte[8];
         BinaryPrimitives.WriteUInt32BigEndian(header, (uint)zlibLength);
@@ -130,12 +130,12 @@ public sealed class PngFileGenerator : IFileGenerator
         // DeflateStream doesn't guarantee byte-stable output across runtime
         // versions, and the exact-size guarantee needs a fixed IDAT length.
         var adler = new Adler32();
-        var block = new byte[ushort.MaxValue];
-        var blockHeader = new byte[5];
+        var block = new byte[StoredDeflate.MaxBlockSize];
+        var blockHeader = new byte[StoredDeflate.BlockHeaderSize];
         long rawOffset = 0;
         while (rawOffset < rawLength)
         {
-            var blockLength = (int)Math.Min(ushort.MaxValue, rawLength - rawOffset);
+            var blockLength = (int)Math.Min(StoredDeflate.MaxBlockSize, rawLength - rawOffset);
             var filled = 0;
             while (filled < blockLength)
             {
@@ -148,9 +148,7 @@ public sealed class PngFileGenerator : IFileGenerator
                 filled += count;
             }
 
-            blockHeader[0] = rawOffset + blockLength == rawLength ? (byte)1 : (byte)0; // BFINAL + BTYPE 00
-            BinaryPrimitives.WriteUInt16LittleEndian(blockHeader.AsSpan(1), (ushort)blockLength);
-            BinaryPrimitives.WriteUInt16LittleEndian(blockHeader.AsSpan(3), (ushort)~blockLength);
+            StoredDeflate.WriteBlockHeader(blockHeader, blockLength, isFinal: rawOffset + blockLength == rawLength);
             crc.Append(blockHeader);
             await output.WriteAsync(blockHeader, cancellationToken);
 
