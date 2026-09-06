@@ -18,6 +18,7 @@ ASP.NET Core Web API that generates structurally valid dummy files of an exact r
 - DOCX
 - XLSX
 - JSON
+- TAR
 
 # API endpoints
 - `GET /api/files/generate?type=txt&size=100KB&seed=42` — streams a dummy file of the exact requested byte size as a download (`seed` is optional)
@@ -28,7 +29,7 @@ Size units are binary: `KB` = 1024 bytes, `MB` = 1024² bytes (`KiB`/`MiB` are a
 
 `seed`'s effect depends on the type:
 - `png` / `jpeg` / `pdf` — picks the checkerboard fill color from a fixed palette (omit for the first color)
-- `zip` / `docx` — picks the filler phrase from a fixed set (omit for the first); changes the content bytes, not the size
+- `zip` / `docx` / `tar` — picks the filler phrase from a fixed set (omit for the first); changes the content bytes, not the size
 - `csv` / `xlsx` / `json` — sets the starting row/record `Id`, counting up from there (omit, or pass a non-positive
   value, for 1; a huge seed combined with a near-minimum size also falls back to 1, since the requested size can't
   fit that many Id digits)
@@ -58,7 +59,9 @@ Every generator hits the requested byte count exactly while staying a structural
 - **xlsx** — an OOXML package: the same `ZipWriter` storing seven minimal spreadsheet parts (`[Content_Types].xml`, the two `.rels` parts, `xl/workbook.xml`, `xl/worksheets/sheet1.xml`, `docProps/core.xml`, `docProps/app.xml`), no `styles.xml`/`sharedStrings.xml`. Only the rows in `sheet1.xml` vary: a header row, then numeric `<row>`s counting up from the `seed` Id, then — because each row's digit width drifts as the numbers grow — a **final row whose inline-string cell** is sized to consume the exact remainder (`csv`'s last-field technique). The sheet is generated once to compute its CRC for the ZIP local header, then again to stream it.
 - **json** — `{"meta":{"count":N},"records":[{"id":K,"value":"..."}, ...]}`. Full records with short `"item-K"` values are written until less than one more fits, then the **final record's `value` string** is sized to land on the exact byte count (`csv`'s last-field technique again; the filler is plain ASCII so no JSON escaping perturbs the length). `count` is the record total, and its own printed digits are part of the file, so — like `pdf`'s `/Length` — the record count is settled by a short fixed-point pass (widen the reserved digits until the simulated count fits) before streaming; any leftover width the final record absorbs.
 
-The image and PDF generators are hand-rolled byte writers rather than built on an imaging/PDF library, since general-purpose encoders don't expose an exact-byte-count knob — the padding mechanism itself is the project's central teaching point. `ZipWriter` is likewise hand-rolled, and is reused for the OOXML formats (a `.docx`/`.xlsx` is a ZIP of fixed XML parts).
+- **tar** — a single USTAR entry (`readme.txt`) of deterministic filler text, written by a small hand-rolled `TarWriter`: a fixed 512-byte header, the content zero-padded to the next 512-byte block, then the two 512-byte zero blocks marking end-of-archive. A "clean" tar is always a multiple of 512 bytes, so content length is sized to land exactly on the largest 512-byte multiple at or below the target, and any sub-512 remainder is appended as trailing zero bytes past the end-of-archive marker — padding every tar reader already tolerates, since it's what the default blocking factor produces anyway.
+
+The image and PDF generators are hand-rolled byte writers rather than built on an imaging/PDF library, since general-purpose encoders don't expose an exact-byte-count knob — the padding mechanism itself is the project's central teaching point. `ZipWriter` is likewise hand-rolled, and is reused for the OOXML formats (a `.docx`/`.xlsx` is a ZIP of fixed XML parts); `TarWriter` is its tar counterpart.
 
 # Libraries used
 
