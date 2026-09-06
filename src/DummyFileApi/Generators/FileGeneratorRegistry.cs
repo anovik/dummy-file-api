@@ -14,5 +14,6 @@ public static class FileGeneratorRegistry
         ("docx", typeof(DocxFileGenerator)),
         ("xlsx", typeof(XlsxFileGenerator)),
         ("json", typeof(JsonFileGenerator)),
+        ("tar", typeof(TarFileGenerator)),
     ];
 }

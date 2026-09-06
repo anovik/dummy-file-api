@@ -164,7 +164,7 @@ public sealed class ZipWriter(Stream output)
         while (remaining > 0)
         {
             var count = (int)Math.Min(chunk.Length, remaining);
-            FillRepeating(chunk.AsSpan(0, count), pattern, ref patternIndex);
+            RepeatingFiller.Fill(chunk.AsSpan(0, count), pattern, ref patternIndex);
             crc.Append(chunk.AsSpan(0, count));
             remaining -= count;
         }
@@ -190,32 +190,11 @@ public sealed class ZipWriter(Stream output)
             await output.WriteAsync(prefix, cancellationToken);
         }
 
-        var chunk = new byte[(int)Math.Min(MaxChunkSize, Math.Max(length, 1))];
-        var patternIndex = 0;
-        var remaining = length;
-        while (remaining > 0)
-        {
-            var count = (int)Math.Min(chunk.Length, remaining);
-            FillRepeating(chunk.AsSpan(0, count), pattern, ref patternIndex);
-            await output.WriteAsync(chunk.AsMemory(0, count), cancellationToken);
-            remaining -= count;
-        }
+        await RepeatingFiller.WriteAsync(output, pattern, length, cancellationToken);
 
         if (!suffix.IsEmpty)
         {
             await output.WriteAsync(suffix, cancellationToken);
-        }
-    }
-
-    private static void FillRepeating(Span<byte> destination, ReadOnlySpan<byte> pattern, ref int patternIndex)
-    {
-        for (var i = 0; i < destination.Length; i++)
-        {
-            destination[i] = pattern[patternIndex];
-            if (++patternIndex == pattern.Length)
-            {
-                patternIndex = 0;
-            }
         }
     }
 
