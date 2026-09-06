@@ -19,6 +19,7 @@ ASP.NET Core Web API that generates structurally valid dummy files of an exact r
 - XLSX
 - JSON
 - TAR
+- GZIP
 
 # API endpoints
 - `GET /api/files/generate?type=txt&size=100KB&seed=42` — streams a dummy file of the exact requested byte size as a download (`seed` is optional)
@@ -29,7 +30,7 @@ Size units are binary: `KB` = 1024 bytes, `MB` = 1024² bytes (`KiB`/`MiB` are a
 
 `seed`'s effect depends on the type:
 - `png` / `jpeg` / `pdf` — picks the checkerboard fill color from a fixed palette (omit for the first color)
-- `zip` / `docx` / `tar` — picks the filler phrase from a fixed set (omit for the first); changes the content bytes, not the size
+- `zip` / `docx` / `tar` / `gzip` — picks the filler phrase from a fixed set (omit for the first); changes the content bytes, not the size
 - `csv` / `xlsx` / `json` — sets the starting row/record `Id`, counting up from there (omit, or pass a non-positive
   value, for 1; a huge seed combined with a near-minimum size also falls back to 1, since the requested size can't
   fit that many Id digits)
@@ -61,6 +62,8 @@ Every generator hits the requested byte count exactly while staying a structural
 
 - **tar** — a single USTAR entry (`readme.txt`) of deterministic filler text, written by a small hand-rolled `TarWriter`: a fixed 512-byte header, the content zero-padded to the next 512-byte block, then the two 512-byte zero blocks marking end-of-archive. A "clean" tar is always a multiple of 512 bytes, so content length is sized to land exactly on the largest 512-byte multiple at or below the target, and any sub-512 remainder is appended as trailing zero bytes past the end-of-archive marker — padding every tar reader already tolerates, since it's what the default blocking factor produces anyway.
 
+- **gzip** — a member header (10 fixed bytes plus a `readme.txt` original-filename field, so decompressing yields a named file like `zip`/`tar` do), a raw DEFLATE stream of **hand-rolled "stored" (uncompressed) blocks** (the same framing `png` uses for IDAT, shared as `StoredDeflate`), then an 8-byte trailer of CRC-32 and length. Each stored block wraps its payload in 5 fixed bytes, so the payload length solves for the target directly. Crossing into a new 65535-byte block bumps the total by 6, which would leave a narrow band of sizes unreachable — so the block count is raised past its natural minimum when needed and an empty trailing block absorbs the gap. Payload is `zip`-style repeating filler.
+
 The image and PDF generators are hand-rolled byte writers rather than built on an imaging/PDF library, since general-purpose encoders don't expose an exact-byte-count knob — the padding mechanism itself is the project's central teaching point. `ZipWriter` is likewise hand-rolled, and is reused for the OOXML formats (a `.docx`/`.xlsx` is a ZIP of fixed XML parts); `TarWriter` is its tar counterpart.
 
 # Libraries used
@@ -80,6 +83,7 @@ File generation itself uses no imaging or document libraries by design: generato
 - [PdfPig](https://github.com/UglyToad/PdfPig) (Apache 2.0) — independent parser validating generated PDFs
 - [DocumentFormat.OpenXml](https://github.com/dotnet/Open-XML-SDK) (MIT) — independent reader + schema validator for generated DOCX and XLSX files
 - `System.IO.Compression.ZipArchive` (BCL) — independent reader validating generated ZIP, DOCX, and XLSX containers (generation never uses it)
+- `System.IO.Compression.GZipStream` (BCL) — independent decompressor validating generated GZIP files, including the CRC-32/length trailer (generation never uses it)
 
 # Requirements
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)

@@ -15,5 +15,6 @@ public static class FileGeneratorRegistry
         ("xlsx", typeof(XlsxFileGenerator)),
         ("json", typeof(JsonFileGenerator)),
         ("tar", typeof(TarFileGenerator)),
+        ("gzip", typeof(GzipFileGenerator)),
     ];
 }

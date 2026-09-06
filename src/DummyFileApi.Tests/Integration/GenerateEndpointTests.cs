@@ -23,6 +23,7 @@ public class GenerateEndpointTests(IntegrationTestWebApplicationFactory factory)
     [InlineData("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx")]
     [InlineData("json", "application/json", "json")]
     [InlineData("tar", "application/x-tar", "tar")]
+    [InlineData("gzip", "application/gzip", "gz")]
     public async Task Generate_HappyPath_ReturnsExactBodyWithMatchingHeaders(string type, string expectedMimeType, string expectedExtension)
     {
         var response = await _client.SendAsync(Request($"/api/files/generate?type={type}&size=64KB"));
