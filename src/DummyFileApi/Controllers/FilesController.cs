@@ -22,11 +22,11 @@ public class FilesController(
     GenerationRateLimiter rateLimiter) : ControllerBase
 {
     /// <summary>Streams a generated dummy file of the exact requested byte size.</summary>
-    /// <param name="type">One of the types returned by <c>GET /api/files/types</c> (e.g. <c>txt</c>, <c>csv</c>, <c>pdf</c>, <c>jpeg</c>, <c>png</c>, <c>zip</c>, <c>docx</c>, <c>xlsx</c>, <c>json</c>, <c>tar</c>, <c>gzip</c>).</param>
+    /// <param name="type">One of the types returned by <c>GET /api/files/types</c> (e.g. <c>txt</c>, <c>csv</c>, <c>pdf</c>, <c>jpeg</c>, <c>png</c>, <c>zip</c>, <c>docx</c>, <c>xlsx</c>, <c>json</c>, <c>tar</c>, <c>gzip</c>, <c>svg</c>).</param>
     /// <param name="size">Human-readable size, binary units (e.g. <c>100KB</c> = 102,400 bytes, <c>1MB</c> = 1,048,576 bytes). <c>KiB</c>/<c>MiB</c> are accepted aliases.</param>
     /// <param name="seed">
     /// Optional, meaning varies by type:
-    /// <c>png</c>/<c>jpeg</c>/<c>pdf</c> use it to pick the checkerboard fill color from a fixed palette
+    /// <c>png</c>/<c>jpeg</c>/<c>pdf</c>/<c>svg</c> use it to pick the checkerboard fill color from a fixed palette
     /// (omit for the first palette color); <c>zip</c>/<c>docx</c>/<c>tar</c>/<c>gzip</c> use it to pick the filler phrase from a
     /// fixed set (omit for the first), which changes the bytes but not the size; <c>csv</c>, <c>xlsx</c> and
     /// <c>json</c> use it as the starting row/record Id, counting up from there (omit, or pass a non-positive

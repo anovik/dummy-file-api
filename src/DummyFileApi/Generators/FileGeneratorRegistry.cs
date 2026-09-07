@@ -16,5 +16,6 @@ public static class FileGeneratorRegistry
         ("json", typeof(JsonFileGenerator)),
         ("tar", typeof(TarFileGenerator)),
         ("gzip", typeof(GzipFileGenerator)),
+        ("svg", typeof(SvgFileGenerator)),
     ];
 }
