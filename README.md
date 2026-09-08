@@ -21,6 +21,7 @@ ASP.NET Core Web API that generates structurally valid dummy files of an exact r
 - TAR
 - GZIP
 - SVG
+- WAV
 
 # API endpoints
 - `GET /api/files/generate?type=txt&size=100KB&seed=42` — streams a dummy file of the exact requested byte size as a download (`seed` is optional)
@@ -32,6 +33,7 @@ Size units are binary: `KB` = 1024 bytes, `MB` = 1024² bytes (`KiB`/`MiB` are a
 `seed`'s effect depends on the type:
 - `png` / `jpeg` / `pdf` / `svg` — picks the checkerboard fill color from a fixed palette (omit for the first color)
 - `zip` / `docx` / `tar` / `gzip` — picks the filler phrase from a fixed set (omit for the first); changes the content bytes, not the size
+- `wav` — picks the sample waveform from a fixed set (omit for silence); changes the audio, not the size
 - `csv` / `xlsx` / `json` — sets the starting row/record `Id`, counting up from there (omit, or pass a non-positive
   value, for 1; a huge seed combined with a near-minimum size also falls back to 1, since the requested size can't
   fit that many Id digits)
@@ -67,6 +69,8 @@ Every generator hits the requested byte count exactly while staying a structural
 
 - **svg** — an XML document: a checkerboard of `<rect>`s scaled coarsely to the requested size (seed picks the fill color, capped at a 32×32 grid since `png`/`jpeg`/`pdf` already cover a full-size image), then a trailing `<desc>` whose safe-ASCII filler text (letters and hyphens only, so no XML-escaping) is sized to land on the exact byte count — `csv`'s last-field technique again, with the fixed SVG scaffold as the constant. The generator widens the grid one step at a time while the scaffold still fits, then `<desc>` absorbs the remainder.
 
+- **wav** — a canonical RIFF/WAVE file: the fixed 44-byte header (PCM `fmt ` chunk — mono, 8 kHz, 8-bit) followed by a single `data` chunk of raw unsigned PCM samples. Block align is 1 byte, so the sample count is unconstrained and the `data` length is just `target − 44` in one step — no padding chunk, no digit-width iteration. Since `data` is the final chunk, an odd length needs no RIFF pad byte. Samples are a fixed one-period waveform table (silence, or a low-amplitude square/sawtooth/triangle/tone picked by `seed`) tiled across the chunk.
+
 The image and PDF generators are hand-rolled byte writers rather than built on an imaging/PDF library, since general-purpose encoders don't expose an exact-byte-count knob — the padding mechanism itself is the project's central teaching point. `ZipWriter` is likewise hand-rolled, and is reused for the OOXML formats (a `.docx`/`.xlsx` is a ZIP of fixed XML parts); `TarWriter` is its tar counterpart.
 
 # Libraries used
@@ -88,6 +92,7 @@ File generation itself uses no imaging or document libraries by design: generato
 - `System.IO.Compression.ZipArchive` (BCL) — independent reader validating generated ZIP, DOCX, and XLSX containers (generation never uses it)
 - `System.IO.Compression.GZipStream` (BCL) — independent decompressor validating generated GZIP files, including the CRC-32/length trailer (generation never uses it)
 - `System.Xml.Linq` (BCL) — parses generated SVG to confirm it is well-formed XML rooted at `<svg>`
+- a hand-rolled RIFF chunk reader (test only) — walks generated WAV to confirm the `fmt ` and `data` chunks are present and `data` length matches the solved sample count
 
 # Requirements
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
