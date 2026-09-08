@@ -17,5 +17,6 @@ public static class FileGeneratorRegistry
         ("tar", typeof(TarFileGenerator)),
         ("gzip", typeof(GzipFileGenerator)),
         ("svg", typeof(SvgFileGenerator)),
+        ("wav", typeof(WavFileGenerator)),
     ];
 }

@@ -25,6 +25,7 @@ public class GenerateEndpointTests(IntegrationTestWebApplicationFactory factory)
     [InlineData("tar", "application/x-tar", "tar")]
     [InlineData("gzip", "application/gzip", "gz")]
     [InlineData("svg", "image/svg+xml", "svg")]
+    [InlineData("wav", "audio/wav", "wav")]
     public async Task Generate_HappyPath_ReturnsExactBodyWithMatchingHeaders(string type, string expectedMimeType, string expectedExtension)
     {
         var response = await _client.SendAsync(Request($"/api/files/generate?type={type}&size=64KB"));
