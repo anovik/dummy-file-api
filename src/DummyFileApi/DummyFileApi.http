@@ -1,6 +1,15 @@
 @DummyFileApi_HostAddress = http://localhost:5119
 
-GET {{DummyFileApi_HostAddress}}/weatherforecast/
+GET {{DummyFileApi_HostAddress}}/api/files/types
+Accept: application/json
+
+###
+
+GET {{DummyFileApi_HostAddress}}/api/files/generate?type=pdf&size=100KB&seed=3
+
+###
+
+GET {{DummyFileApi_HostAddress}}/api/files/history?page=1&pageSize=20
 Accept: application/json
 
 ###

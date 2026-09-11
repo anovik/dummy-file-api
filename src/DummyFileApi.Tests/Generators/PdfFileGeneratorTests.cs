@@ -29,6 +29,25 @@ public class PdfFileGeneratorTests
         Assert.Equal(targetSizeBytes, stream.Length);
     }
 
+    // Every size across the 1 KB and 20 KB grid-tier switches and the windows
+    // where the xref offset or the padding /Length gains a digit: the page
+    // planner and the padding solve must agree on what fits everywhere.
+    [Fact]
+    public async Task GenerateAsync_SweepAcrossTierAndDigitBoundaries_AlwaysExact()
+    {
+        var targets = Enumerable.Range(740, 700)
+            .Concat(Enumerable.Range(9_950, 100))
+            .Concat(Enumerable.Range(20_430, 100))
+            .Concat(Enumerable.Range(99_950, 100));
+
+        foreach (var target in targets)
+        {
+            using var stream = new MemoryStream();
+            await _generator.GenerateAsync(stream, target, seed: null);
+            Assert.Equal(target, stream.Length);
+        }
+    }
+
     [Theory]
     [InlineData(740)]
     [InlineData(2048)]

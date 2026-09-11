@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Xml;
 using System.Xml.Linq;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -176,6 +177,57 @@ public class XlsxFileGeneratorTests
             using var entryStream = entry.Open();
             Assert.NotNull(XDocument.Load(entryStream)); // every part is well-formed XML
         }
+    }
+
+    [Fact]
+    public async Task GenerateAsync_AtDefaultMaxSize_WidensRowsToStayWithinExcelRowLimit()
+    {
+        const long target = 100L * 1024 * 1024;
+        using var stream = new MemoryStream();
+        await _generator.GenerateAsync(stream, target, seed: null);
+
+        Assert.Equal(target, stream.Length);
+        stream.Position = 0;
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+        using var sheet = archive.GetEntry("xl/worksheets/sheet1.xml")!.Open();
+        using var reader = XmlReader.Create(sheet);
+
+        // Streamed rather than loaded: the sheet XML is ~100 MB.
+        var rowCount = 0;
+        long currentRow = 0;
+        var headerCells = new List<string>();
+        var firstDataCells = new List<string>();
+        while (reader.Read())
+        {
+            if (reader.NodeType != XmlNodeType.Element)
+            {
+                continue;
+            }
+
+            if (reader.LocalName == "row")
+            {
+                rowCount++;
+                currentRow = long.Parse(reader.GetAttribute("r")!);
+                Assert.Equal(rowCount, currentRow);
+            }
+            else if (reader.LocalName == "c" && currentRow == 1)
+            {
+                headerCells.Add(reader.GetAttribute("r")!);
+            }
+            else if (reader.LocalName == "v" && currentRow == 2)
+            {
+                firstDataCells.Add(reader.ReadElementContentAsString());
+            }
+        }
+
+        Assert.InRange(rowCount, 2, 1_048_576);
+
+        // Id 1 in column A, then Id*2, Id*3, ... in the extra numeric columns,
+        // then the "Value" column the header names but only the final row fills.
+        Assert.True(firstDataCells.Count > 1);
+        Assert.Equal(firstDataCells.Select((_, i) => (i + 1).ToString()), firstDataCells);
+        Assert.Equal(firstDataCells.Count + 1, headerCells.Count);
+        Assert.Equal(Enumerable.Range(0, headerCells.Count).Select(i => $"{(char)('A' + i)}1"), headerCells);
     }
 
     private static List<Row> RowsOf(SpreadsheetDocument doc)

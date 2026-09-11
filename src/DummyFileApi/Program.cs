@@ -1,9 +1,13 @@
+using System.Reflection;
 using DummyFileApi.Data;
 using DummyFileApi.Generators;
+using DummyFileApi.Models;
 using DummyFileApi.Options;
 using DummyFileApi.Services;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -26,10 +30,27 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
         rollingInterval: RollingInterval.Day,
         shared: true));
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        // Binding failures (e.g. seed=abc) are rejected before the action runs;
+        // return them as ErrorResponse so every 400 shares one shape.
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var messages = context.ModelState
+                .SelectMany(entry => entry.Value!.Errors, (entry, error) => $"{entry.Key}: {error.ErrorMessage}");
+            var message = string.Join(" ", messages);
+            return new BadRequestObjectResult(new ErrorResponse(message.Length > 0 ? message : "Invalid request."));
+        };
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
+    // The SDK appends "+<commit>" to the informational version; show just the release number.
+    var version = typeof(Program).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0];
+    options.SwaggerDoc("v1", new OpenApiInfo { Title = builder.Environment.ApplicationName, Version = version });
+
     var xmlFile = Path.Combine(AppContext.BaseDirectory, $"{typeof(Program).Assembly.GetName().Name}.xml");
     if (File.Exists(xmlFile))
     {

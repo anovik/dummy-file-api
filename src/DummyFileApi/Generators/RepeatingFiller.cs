@@ -1,9 +1,8 @@
 namespace DummyFileApi.Generators;
 
 /// <summary>
-/// Streams (or fills a buffer with) a byte pattern repeated indefinitely from its start.
-/// Shared by every generator that pads an entry with deterministic filler content —
-/// <see cref="ZipWriter"/> (zip/docx) and <see cref="TarWriter"/> (tar).
+/// Streams (or fills a buffer with) a byte pattern repeated indefinitely from its start —
+/// the deterministic filler behind the archive formats' entry text and wav's samples.
 /// </summary>
 internal static class RepeatingFiller
 {

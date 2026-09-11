@@ -4,11 +4,17 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Validation;
 using DocumentFormat.OpenXml.Wordprocessing;
 using DummyFileApi.Generators;
+using ImageSharpImage = SixLabors.ImageSharp.Image;
 
 namespace DummyFileApi.Tests.Generators;
 
 public class DocxFileGeneratorTests
 {
+    private const int MaxFillerText = 1024 * 1024;
+
+    // Largest target whose filler text fits the cap; one byte more embeds an image.
+    private static readonly long LastTextOnlySize = new DocxFileGenerator().MinSizeBytes + MaxFillerText;
+
     private readonly DocxFileGenerator _generator = new();
 
     public static IEnumerable<object[]> TargetSizes()
@@ -49,8 +55,73 @@ public class DocxFileGeneratorTests
         var errors = new OpenXmlValidator().Validate(doc).ToList();
         Assert.True(errors.Count == 0, string.Join("; ", errors.Select(e => e.Description)));
 
-        // Title paragraph + the one filler paragraph.
-        Assert.Equal(2, doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().Count());
+        // Title paragraph + the one filler paragraph, plus an image paragraph when one is embedded.
+        var imageCount = doc.MainDocumentPart!.ImageParts.Count();
+        Assert.Equal(2 + imageCount, doc.MainDocumentPart.Document!.Body!.Elements<Paragraph>().Count());
+    }
+
+    [Fact]
+    public async Task GenerateAsync_UpToOneMebibyteOfFillerText_EmbedsNoImage()
+    {
+        using var stream = new MemoryStream();
+        await _generator.GenerateAsync(stream, LastTextOnlySize, seed: null);
+
+        Assert.Equal(LastTextOnlySize, stream.Length);
+        stream.Position = 0;
+        using var doc = WordprocessingDocument.Open(stream, isEditable: false);
+
+        Assert.Empty(doc.MainDocumentPart!.ImageParts);
+        Assert.Equal(MaxFillerText, doc.MainDocumentPart.Document!.Body!.Elements<Paragraph>().Last().InnerText.Length);
+    }
+
+    [Theory]
+    [InlineData(0L)] // first size past the text cap: the smallest valid PNG
+    [InlineData(1L)]
+    [InlineData(65_537L)]
+    [InlineData(5L * 1024 * 1024)]
+    public async Task GenerateAsync_PastTheTextCap_EmbedsAPngInsteadOfMoreText(long beyondCap)
+    {
+        var target = LastTextOnlySize + 1 + beyondCap;
+        using var stream = new MemoryStream();
+        await _generator.GenerateAsync(stream, target, seed: 3);
+
+        Assert.Equal(target, stream.Length);
+        stream.Position = 0;
+        using var doc = WordprocessingDocument.Open(stream, isEditable: false);
+
+        var errors = new OpenXmlValidator().Validate(doc).ToList();
+        Assert.True(errors.Count == 0, string.Join("; ", errors.Select(e => e.Description)));
+
+        var imagePart = Assert.Single(doc.MainDocumentPart!.ImageParts);
+        Assert.Equal("image/png", imagePart.ContentType);
+
+        // The drawing's blip points at the embedded part.
+        var blip = doc.MainDocumentPart.Document!.Descendants<DocumentFormat.OpenXml.Drawing.Blip>().Single();
+        Assert.Same(imagePart, doc.MainDocumentPart.GetPartById(blip.Embed!.Value!));
+
+        using var imageStream = imagePart.GetStream();
+        using var image = ImageSharpImage.Load(imageStream);
+        Assert.True(image.Width >= 16);
+
+        Assert.True(doc.MainDocumentPart.Document.Body!.Elements<Paragraph>().Last().InnerText.Length < MaxFillerText);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_AtDefaultMaxSize_KeepsTextSmallAndStaysExact()
+    {
+        const long target = 100L * 1024 * 1024;
+        using var stream = new MemoryStream();
+        await _generator.GenerateAsync(stream, target, seed: null);
+
+        Assert.Equal(target, stream.Length);
+        stream.Position = 0;
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+
+        // Far under Word's 32 MB text limit; the image carries the bulk.
+        Assert.True(archive.GetEntry("word/document.xml")!.Length < 2 * MaxFillerText);
+        using var imageStream = archive.GetEntry("word/media/image1.png")!.Open();
+        var info = ImageSharpImage.Identify(imageStream);
+        Assert.Equal(4096, info.Width);
     }
 
     [Fact]
