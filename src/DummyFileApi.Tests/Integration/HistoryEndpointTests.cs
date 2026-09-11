@@ -79,4 +79,16 @@ public class HistoryEndpointTests(IntegrationTestWebApplicationFactory factory) 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.NotNull(await response.Content.ReadFromJsonAsync<ErrorResponse>());
     }
+
+    [Fact]
+    public async Task GetHistory_UnbindablePage_ReturnsBadRequestAsErrorResponse()
+    {
+        var response = await _client.SendAsync(Request("/api/files/history?page=x", "10.40.5.1"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        var error = await response.Content.ReadFromJsonAsync<ErrorResponse>();
+        Assert.Contains("page", error!.Error);
+        Assert.Contains("'x'", error.Error);
+    }
 }

@@ -60,6 +60,20 @@ public class GenerateEndpointTests(IntegrationTestWebApplicationFactory factory)
         Assert.Contains("Invalid size", error!.Error);
     }
 
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("3000000000")] // overflows int
+    public async Task Generate_UnbindableSeed_ReturnsBadRequestAsErrorResponse(string seed)
+    {
+        var response = await _client.SendAsync(Request($"/api/files/generate?type=txt&size=1KB&seed={seed}"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        var error = await response.Content.ReadFromJsonAsync<ErrorResponse>();
+        Assert.Contains("seed", error!.Error);
+        Assert.Contains(seed, error.Error);
+    }
+
     [Fact]
     public async Task Generate_SizeBelowGeneratorMinimum_ReturnsBadRequest()
     {

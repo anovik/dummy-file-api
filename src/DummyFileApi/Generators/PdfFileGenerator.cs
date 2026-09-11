@@ -130,7 +130,14 @@ public sealed class PdfFileGenerator : IFileGenerator
 
         var totalObjects = TotalObjectCount(pageCount);
         var paddingObjNum = PaddingObjNum(pageCount);
-        var (paddingLength, lengthWidth, offsetWidth) = SolvePadding(targetSizeBytes, cursor, paddingObjNum, totalObjects);
+        // The planner only accepts layouts this solve succeeds for, so failing
+        // here is a bug — and it fails before a single byte is written.
+        if (!TrySolvePadding(targetSizeBytes, cursor, paddingObjNum, totalObjects, out var solution))
+        {
+            throw new InvalidOperationException("PDF layout does not fit the requested size.");
+        }
+
+        var (paddingLength, lengthWidth, offsetWidth) = solution;
 
         await output.WriteAsync(Header, cancellationToken);
         await output.WriteAsync(CatalogObject, cancellationToken);
@@ -189,7 +196,7 @@ public sealed class PdfFileGenerator : IFileGenerator
 
         for (var i = Math.Min(desired, GridTiers.Length - 1); i > 0; i--)
         {
-            if (TierMinOverhead(i) <= targetSizeBytes)
+            if (TierFits(i, targetSizeBytes))
             {
                 return GridTiers[i];
             }
@@ -198,11 +205,11 @@ public sealed class PdfFileGenerator : IFileGenerator
         return GridTiers[0];
     }
 
-    private static long TierMinOverhead(int tierIndex)
+    // Whether the tier's smallest layout (one page, no filler lines) fits.
+    private static bool TierFits(int tierIndex, long targetSizeBytes)
     {
-        var tier = GridTiers[tierIndex];
-        var contentEnd = ComputeContentSectionLength(1, tier, [0]);
-        return contentEnd + EstimateTailOverhead(contentEnd, PaddingObjNum(1), TotalObjectCount(1));
+        var contentEnd = ComputeContentSectionLength(1, GridTiers[tierIndex], [0]);
+        return TrySolvePadding(targetSizeBytes, contentEnd, PaddingObjNum(1), TotalObjectCount(1), out _);
     }
 
     // Grows the page count using each page's own precomputed cost, then
@@ -225,11 +232,8 @@ public sealed class PdfFileGenerator : IFileGenerator
         long ContentEnd(int finalPageCount, long lastPageCost) =>
             FixedPreambleLength + PagesObjectFixedLength(finalPageCount, kidsJoinedLength[finalPageCount]) + lastPageCost;
 
-        bool Fits(long contentEnd, int pageCount)
-        {
-            var tail = EstimateTailOverhead(contentEnd, PaddingObjNum(pageCount), TotalObjectCount(pageCount));
-            return contentEnd + tail <= targetSizeBytes;
-        }
+        bool Fits(long contentEnd, int pageCount) =>
+            TrySolvePadding(targetSizeBytes, contentEnd, PaddingObjNum(pageCount), TotalObjectCount(pageCount), out _);
 
         var pFull = 0;
         for (var p = 1; p <= MaxTotalPages; p++)
@@ -444,9 +448,8 @@ public sealed class PdfFileGenerator : IFileGenerator
     private static string FormatComponent(byte value) =>
         (value / 255.0).ToString("0.000", CultureInfo.InvariantCulture);
 
-    // Default int formatting uses CurrentCulture and can emit shaped digits
-    // that ASCII-encode to '?', corrupting content-stream operators while
-    // keeping the same byte length.
+    // Invariant formatting keeps content-stream numbers plain ASCII whatever
+    // the server's locale.
     private static string AppendInt(int value) => value.ToString(CultureInfo.InvariantCulture);
 
     // Finds a (padding length, /Length digit width, startxref digit width)
@@ -454,16 +457,24 @@ public sealed class PdfFileGenerator : IFileGenerator
     // only grow when the padding length or xref offset needs more digits than
     // currently allotted — which happens right at a digit-count boundary
     // (e.g. padding 9999 -> 10000), where the extra leading zero absorbs the
-    // byte a minimal-width representation would otherwise skip over.
-    private static (long PaddingLength, int LengthWidth, int OffsetWidth) SolvePadding(
-        long targetSizeBytes, long contentEnd, int paddingObjNum, int totalObjects)
+    // byte a minimal-width representation would otherwise skip over. Widths
+    // only grow, so the padding only shrinks: once it goes negative, the
+    // content section is too long for the target.
+    private static bool TrySolvePadding(
+        long targetSizeBytes, long contentEnd, int paddingObjNum, int totalObjects,
+        out (long PaddingLength, int LengthWidth, int OffsetWidth) solution)
     {
+        solution = default;
         var lengthWidth = 1;
         var offsetWidth = 1;
         for (var attempt = 0; attempt < 64; attempt++)
         {
             var overhead = TotalLength(contentEnd, 0, lengthWidth, offsetWidth, paddingObjNum, totalObjects);
             var paddingLength = targetSizeBytes - overhead;
+            if (paddingLength < 0)
+            {
+                return false;
+            }
 
             var neededLengthWidth = DigitCount(paddingLength);
             if (neededLengthWidth > lengthWidth)
@@ -480,20 +491,11 @@ public sealed class PdfFileGenerator : IFileGenerator
                 continue;
             }
 
-            return (paddingLength, lengthWidth, offsetWidth);
+            solution = (paddingLength, lengthWidth, offsetWidth);
+            return true;
         }
 
         throw new InvalidOperationException("PDF padding calculation did not converge.");
-    }
-
-    // The minimum xref/trailer/padding-object bytes a given content-section
-    // length requires (a zero-length padding stream, natural digit widths) —
-    // reserved before deciding how many filler lines can fit in the budget.
-    private static long EstimateTailOverhead(long contentEnd, int paddingObjNum, int totalObjects)
-    {
-        const int lengthWidth = 1;
-        var offsetWidth = DigitCount(contentEnd + PaddingObjectLength(0, lengthWidth, paddingObjNum));
-        return TotalLength(contentEnd, 0, lengthWidth, offsetWidth, paddingObjNum, totalObjects) - contentEnd;
     }
 
     private static long ComputeMinSize()
