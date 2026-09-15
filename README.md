@@ -2,7 +2,9 @@
 
 ASP.NET Core Web API that generates structurally valid dummy files of an exact requested byte size
 
-**Live demo:** https://dummy-file-api-production.up.railway.app
+**Live demo:** https://dummy-file-api-production.up.railway.app — pick a format and size, get the file. No signup, no API key.
+
+Or call the API directly:
 
 1. See supported types and their size limits: [`/api/files/types`](https://dummy-file-api-production.up.railway.app/api/files/types)
 2. Download a generated file: [`/api/files/generate?type=txt&size=10KB`](https://dummy-file-api-production.up.railway.app/api/files/generate?type=txt&size=10KB)
