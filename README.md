@@ -4,6 +4,8 @@ ASP.NET Core Web API that generates structurally valid dummy files of an exact r
 
 **Live demo:** https://dummy-file-api-production.up.railway.app — pick a format and size, get the file. No signup, no API key.
 
+**API reference:** https://dummy-file-api-production.up.railway.app/swagger — Swagger UI, with every parameter, response and error shape, and a Try it out button.
+
 Or call the API directly:
 
 1. See supported types and their size limits: [`/api/files/types`](https://dummy-file-api-production.up.railway.app/api/files/types)
@@ -75,7 +77,7 @@ The image and PDF generators are hand-rolled byte writers rather than built on a
 
 **API** (`src/DummyFileApi`):
 - [Serilog](https://serilog.net/) — structured logging (console + rolling file) and request timing
-- [Swashbuckle](https://github.com/domaindrivendev/Swashbuckle.AspNetCore) — Swagger/OpenAPI UI (Development only)
+- [Swashbuckle](https://github.com/domaindrivendev/Swashbuckle.AspNetCore) — Swagger/OpenAPI reference UI, served in every environment
 - [EF Core + SQLite](https://learn.microsoft.com/ef/core/) — persistence for the generation history
 - [System.IO.Hashing](https://www.nuget.org/packages/System.IO.Hashing) — CRC-32 for PNG chunks, ZIP/DOCX/XLSX entries, and the GZIP trailer
 
@@ -111,7 +113,7 @@ dotnet test
 dotnet test --filter FullyQualifiedName~ClassName
 ```
 
-In Development, Swagger UI is available at `/swagger`.
+Swagger UI is at `/swagger` and the OpenAPI document at `/swagger/v1/swagger.json`, in every environment — locally and on the live demo alike. There is nothing to authenticate, so the reference is public.
 
 # Persistence
 Generation requests are recorded in a local SQLite database (`dummyfileapi.db` next to the app), created and migrated automatically on startup — no manual DB setup needed. The path is configurable via the `ConnectionStrings:Default` setting.

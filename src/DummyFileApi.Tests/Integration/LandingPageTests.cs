@@ -18,6 +18,7 @@ public class LandingPageTests(IntegrationTestWebApplicationFactory factory) : IC
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("<form id=\"generate-form\"", html);
         Assert.Contains("app.js", html);
+        Assert.Contains("href=\"/swagger\"", html);
     }
 
     [Theory]
