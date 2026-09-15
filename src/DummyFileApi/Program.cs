@@ -108,6 +108,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// Serves the landing page from wwwroot at '/'. Same-origin with the API, so
+// the page's fetch calls need no CORS.
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.UseAuthorization();
 
 app.MapControllers();
