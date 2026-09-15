@@ -49,7 +49,24 @@ builder.Services.AddSwaggerGen(options =>
     // The SDK appends "+<commit>" to the informational version; show just the release number.
     var version = typeof(Program).Assembly
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0];
-    options.SwaggerDoc("v1", new OpenApiInfo { Title = builder.Environment.ApplicationName, Version = version });
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Dummy File API",
+        Version = version,
+        Description = """
+            Generates structurally valid dummy files of an exact requested byte size, streamed back as a download.
+
+            Free and unauthenticated: no signup, no API key. Sizes are human-readable and in binary units
+            (1KB = 1,024 bytes, 1MB = 1,048,576 bytes; KiB/MiB are accepted aliases). Each type's minimum and
+            maximum are listed by `GET /api/files/types`. `GET /api/files/generate` is rate limited per client
+            IP; over the limit it returns 429 with a `Retry-After` header. Best-effort, not an SLA.
+            """,
+        License = new OpenApiLicense
+        {
+            Name = "MIT",
+            Url = new Uri("https://github.com/anovik/dummy-file-api/blob/main/LICENSE"),
+        },
+    });
 
     var xmlFile = Path.Combine(AppContext.BaseDirectory, $"{typeof(Program).Assembly.GetName().Name}.xml");
     if (File.Exists(xmlFile))
@@ -100,11 +117,11 @@ using (var scope = app.Services.CreateScope())
 app.UseForwardedHeaders();
 app.UseSerilogRequestLogging();
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+// Served in every environment, not just Development: an unauthenticated public
+// API has nothing to hide behind the reference, and it's the front door for
+// anyone arriving from the landing page or the README.
+app.UseSwagger();
+app.UseSwaggerUI(options => options.DocumentTitle = "Dummy File API reference");
 
 app.UseHttpsRedirection();
 
