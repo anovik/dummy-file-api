@@ -16,6 +16,12 @@ public class IntegrationTestWebApplicationFactory : WebApplicationFactory<Progra
 
     protected virtual int MaxPerHour => 100;
 
+    protected virtual long MaxSizeBytes => 52_428_800;
+
+    // Well above the production default: test classes run in parallel, and a
+    // spurious 503 from one of them would be a confusing flake.
+    protected virtual int MaxConcurrentGenerations => 256;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureAppConfiguration((_, config) =>
@@ -26,6 +32,8 @@ public class IntegrationTestWebApplicationFactory : WebApplicationFactory<Progra
                 // pooled Sqlite connections otherwise outlive host shutdown and lock it.
                 ["ConnectionStrings:Default"] = $"Data Source={_dbPath};Pooling=False",
                 ["RateLimiting:MaxPerHour"] = MaxPerHour.ToString(CultureInfo.InvariantCulture),
+                ["FileGeneration:MaxSizeBytes"] = MaxSizeBytes.ToString(CultureInfo.InvariantCulture),
+                ["FileGeneration:MaxConcurrentGenerations"] = MaxConcurrentGenerations.ToString(CultureInfo.InvariantCulture),
                 ["Proxy:TrustForwardedHeaders"] = "true",
             });
         });
