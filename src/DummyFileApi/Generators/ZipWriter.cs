@@ -63,7 +63,7 @@ public sealed class ZipWriter(Stream output)
 
         // Every size/offset field written below is 32-bit, and the entry count
         // is 16-bit. Refuse rather than silently truncate into a corrupt
-        // archive — ZIP64 is out of scope (MaxSizeBytes is 100 MB by default).
+        // archive — ZIP64 is out of scope (MaxSizeBytes is 50 MiB by default).
         if (length < 0 ||
             (ulong)_offset + (ulong)LocalHeaderBaseSize + (ulong)nameBytes.Length + (ulong)length > uint.MaxValue)
         {

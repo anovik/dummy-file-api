@@ -2,9 +2,11 @@
 
 ASP.NET Core Web API that generates structurally valid dummy files of an exact requested byte size
 
-**Live demo:** https://dummy-file-api-production.up.railway.app — pick a format and size, get the file. No signup, no API key.
+**Live demo:** https://dummy-file-api-production.up.railway.app — pick a format and size, get the file.
 
 **API reference:** https://dummy-file-api-production.up.railway.app/swagger — Swagger UI, with every parameter, response and error shape, and a Try it out button.
+
+It is free and unauthenticated: no signup, no API key, no headers to set. Fair-use limits apply per client IP — 100 generations an hour and 50MB per file, both configurable if you self-host — and it is best-effort, not an SLA.
 
 Or call the API directly:
 
@@ -27,7 +29,31 @@ Or call the API directly:
 - SVG
 - WAV
 
-# API endpoints
+# Using the API
+
+Every endpoint is a plain `GET` — no key, no headers, no request body:
+
+```bash
+API="https://dummy-file-api-production.up.railway.app"
+
+# A 100KB text file, keeping the filename the server suggests
+curl -OJ "$API/api/files/generate?type=txt&size=100KB"
+
+# A 2MB PDF, seeded, saved under a name you pick
+curl -o sample.pdf "$API/api/files/generate?type=pdf&size=2MB&seed=7"
+
+# What you can ask for: types, MIME types, extensions, size bounds
+curl "$API/api/files/types"
+
+# What you have asked for: paged, newest first, keyed to your IP
+curl "$API/api/files/history?page=1&pageSize=20"
+```
+
+Set `API="http://localhost:5119"` to run the same calls against a local `dotnet run`.
+
+Not a curl person? The [live demo page](https://dummy-file-api-production.up.railway.app) does the same thing in a browser — pick a format, type a size, click Download.
+
+# Endpoint reference
 - `GET /api/files/generate?type=txt&size=100KB&seed=42` — streams a dummy file of the exact requested byte size as a download (`seed` is optional)
 - `GET /api/files/types` — lists supported types with MIME type, file extension, and min/max allowed size
 - `GET /api/files/history?page=1&pageSize=20` — paged history of your past generation requests, newest first (`pageSize` 1-100; clients are identified by IP, no auth)
@@ -43,13 +69,15 @@ Size units are binary: `KB` = 1024 bytes, `MB` = 1024² bytes (`KiB`/`MiB` are a
   fit that many Id digits)
 - `txt` — ignored; exact-size filler text needs no seed-driven variation
 
+Requested size must be between the type's minimum (from `/api/files/types`) and a configurable max, `50MB` by default (`FileGeneration:MaxSizeBytes`) — outside that range returns `400`. Every `400`, `429` and `503` has the same JSON body, `{"error": "..."}`, including malformed parameters like `seed=abc`.
+
+`/api/files/generate` is rate-limited per client IP: a sliding 1-hour window, `100` requests by default (`RateLimiting:MaxPerHour`). Over the limit returns `429` with a `Retry-After` header (seconds until the oldest counted request ages out of the window). Every `/generate` response, `429` included, carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (a Unix timestamp) so callers can self-throttle:
+
 ```bash
-curl -OJ "http://localhost:5119/api/files/generate?type=txt&size=100KB"
+curl -s -D - -o /dev/null "$API/api/files/generate?type=txt&size=1KB" | grep -i x-ratelimit
 ```
 
-Requested size must be between the type's minimum (from `/api/files/types`) and a configurable max, `100MB` by default (`FileGeneration:MaxSizeBytes`) — outside that range returns `400`. Every `400`/`429` has the same JSON body, `{"error": "..."}`, including malformed parameters like `seed=abc`.
-
-`/api/files/generate` is rate-limited per client IP: a sliding 1-hour window, `100` requests by default (`RateLimiting:MaxPerHour`). Over the limit returns `429` with a `Retry-After` header (seconds until the oldest counted request ages out of the window).
+Generations are also capped in flight: at most `4` at once by default (`FileGeneration:MaxConcurrentGenerations`, `0` to disable), so a burst of large requests can't pin the host. Past that, `/generate` sheds the request with `503` and a `Retry-After` rather than queueing it. Like the rate limiter this is soft protection, not a quota.
 
 If deployed behind a reverse proxy (e.g. a PaaS host that terminates TLS in front of the app), set `Proxy:TrustForwardedHeaders` to `true` so client IPs (used for history and rate limiting) come from `X-Forwarded-For` instead of the proxy's own address. Leaving it `false` while actually behind a proxy pools every real client into the proxy's single IP, sharing one rate-limit bucket and history. Leave it `false` (the default) when running directly — trusting that header without an actual proxy in front lets a client spoof its IP to bypass the rate limit; even with a proxy, this app trusts whatever the immediate hop sends with no proxy IP allowlist, so it's only appropriate when the app isn't also reachable directly around that proxy.
 

@@ -19,7 +19,8 @@ public class FilesController(
     IServiceProvider serviceProvider,
     IOptions<FileGenerationOptions> options,
     AppDbContext dbContext,
-    GenerationRateLimiter rateLimiter) : ControllerBase
+    GenerationRateLimiter rateLimiter,
+    GenerationConcurrencyGuard concurrencyGuard) : ControllerBase
 {
     /// <summary>Streams a generated dummy file of the exact requested byte size.</summary>
     /// <param name="type">One of the types returned by <c>GET /api/files/types</c> (e.g. <c>txt</c>, <c>csv</c>, <c>pdf</c>, <c>jpeg</c>, <c>png</c>, <c>zip</c>, <c>docx</c>, <c>xlsx</c>, <c>json</c>, <c>tar</c>, <c>gzip</c>, <c>svg</c>, <c>wav</c>).</param>
@@ -36,13 +37,19 @@ public class FilesController(
     /// one row at that Id); <c>txt</c> ignores it entirely.
     /// </param>
     /// <param name="cancellationToken">Cancellation token for the request.</param>
-    /// <response code="200">The generated file as an attachment, served with the requested type's MIME type.</response>
+    /// <response code="200">
+    /// The generated file as an attachment, served with the requested type's MIME type. Carries
+    /// <c>X-RateLimit-Limit</c>, <c>X-RateLimit-Remaining</c> and <c>X-RateLimit-Reset</c> (a Unix timestamp
+    /// in seconds) so callers can self-throttle.
+    /// </response>
     /// <response code="400">Unsupported type, unparseable size, or size outside the type's min/max bounds.</response>
-    /// <response code="429">Rate limit exceeded; the <c>Retry-After</c> header gives the seconds to wait.</response>
+    /// <response code="429">Rate limit exceeded; <c>Retry-After</c> gives the seconds to wait, and the same <c>X-RateLimit-*</c> headers are sent.</response>
+    /// <response code="503">Too many generations already in flight; <c>Retry-After</c> gives the seconds to wait.</response>
     [HttpGet("generate")]
     [ProducesResponseType<FileResult>(StatusCodes.Status200OK, "application/octet-stream")]
     [ProducesResponseType<ErrorResponse>(StatusCodes.Status400BadRequest, "application/json")]
     [ProducesResponseType<ErrorResponse>(StatusCodes.Status429TooManyRequests, "application/json")]
+    [ProducesResponseType<ErrorResponse>(StatusCodes.Status503ServiceUnavailable, "application/json")]
     public async Task<IActionResult> Generate([FromQuery] string? type, [FromQuery] string? size, [FromQuery] int? seed, CancellationToken cancellationToken)
     {
         if (!RequestValidation.TryValidateType(type, out var key, out var typeError))
@@ -64,6 +71,11 @@ public class FilesController(
 
         var clientId = ClientIdentifier.GetClientId(HttpContext);
         var rateLimitResult = await rateLimiter.CheckAsync(clientId, cancellationToken);
+
+        Response.Headers["X-RateLimit-Limit"] = rateLimitResult.Limit.ToString(CultureInfo.InvariantCulture);
+        Response.Headers["X-RateLimit-Remaining"] = rateLimitResult.Remaining.ToString(CultureInfo.InvariantCulture);
+        Response.Headers["X-RateLimit-Reset"] = rateLimitResult.ResetUnixSeconds.ToString(CultureInfo.InvariantCulture);
+
         if (!rateLimitResult.IsAllowed)
         {
             Response.Headers.RetryAfter = rateLimitResult.RetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
@@ -71,29 +83,45 @@ public class FilesController(
                 $"Rate limit exceeded: max {rateLimitResult.Limit} requests per hour. Retry after {rateLimitResult.RetryAfterSeconds} seconds."));
         }
 
-        Response.ContentType = generator.MimeType;
-        Response.Headers.ContentDisposition = $"attachment; filename=\"dummy.{generator.FileExtension}\"";
-        Response.ContentLength = targetSizeBytes;
-
-        var stopwatch = Stopwatch.StartNew();
-        var countingBody = new CountingStream(Response.Body);
-        await generator.GenerateAsync(countingBody, targetSizeBytes, seed, cancellationToken);
-        stopwatch.Stop();
-
-        dbContext.GenerationRequests.Add(new GenerationRequest
+        // Shed load rather than queue behind it: a queued caller would hold a
+        // connection for however long the generations ahead of it take.
+        if (!concurrencyGuard.TryAcquire())
         {
-            Id = Guid.NewGuid(),
-            ClientId = clientId,
-            FileType = generator.TypeKey,
-            RequestedSizeBytes = targetSizeBytes,
-            ActualSizeBytes = countingBody.BytesWritten,
-            CreatedAtUtc = DateTime.UtcNow,
-            DurationMs = (int)stopwatch.ElapsedMilliseconds,
-        });
+            Response.Headers.RetryAfter = concurrencyGuard.RetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ErrorResponse(
+                $"Too many generations in flight. Retry after {concurrencyGuard.RetryAfterSeconds} seconds."));
+        }
 
-        // The file already streamed in full; don't let a client disconnect
-        // cancel recording the completed generation.
-        await dbContext.SaveChangesAsync(CancellationToken.None);
+        try
+        {
+            Response.ContentType = generator.MimeType;
+            Response.Headers.ContentDisposition = $"attachment; filename=\"dummy.{generator.FileExtension}\"";
+            Response.ContentLength = targetSizeBytes;
+
+            var stopwatch = Stopwatch.StartNew();
+            var countingBody = new CountingStream(Response.Body);
+            await generator.GenerateAsync(countingBody, targetSizeBytes, seed, cancellationToken);
+            stopwatch.Stop();
+
+            dbContext.GenerationRequests.Add(new GenerationRequest
+            {
+                Id = Guid.NewGuid(),
+                ClientId = clientId,
+                FileType = generator.TypeKey,
+                RequestedSizeBytes = targetSizeBytes,
+                ActualSizeBytes = countingBody.BytesWritten,
+                CreatedAtUtc = DateTime.UtcNow,
+                DurationMs = (int)stopwatch.ElapsedMilliseconds,
+            });
+
+            // The file already streamed in full; don't let a client disconnect
+            // cancel recording the completed generation.
+            await dbContext.SaveChangesAsync(CancellationToken.None);
+        }
+        finally
+        {
+            concurrencyGuard.Release();
+        }
 
         return new EmptyResult();
     }

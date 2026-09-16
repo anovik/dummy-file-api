@@ -111,4 +111,75 @@ public class GenerationRateLimiterTests
 
         Assert.Equal(7, result.Limit);
     }
+
+    [Fact]
+    public async Task CheckAsync_Remaining_CountsTheCallersOwnRequestAsSpent()
+    {
+        using var db = CreateInMemoryDb();
+        db.GenerationRequests.Add(CreateRow("1.2.3.4", DateTime.UtcNow));
+        db.GenerationRequests.Add(CreateRow("1.2.3.4", DateTime.UtcNow));
+        await db.SaveChangesAsync();
+        var limiter = CreateLimiter(db, maxPerHour: 10);
+
+        var result = await limiter.CheckAsync("1.2.3.4", CancellationToken.None);
+
+        // 2 already recorded, and this one is about to be: 7 left afterwards.
+        Assert.Equal(7, result.Remaining);
+    }
+
+    [Fact]
+    public async Task CheckAsync_Remaining_IsZeroOnTheLastAllowedRequest()
+    {
+        using var db = CreateInMemoryDb();
+        db.GenerationRequests.Add(CreateRow("1.2.3.4", DateTime.UtcNow));
+        await db.SaveChangesAsync();
+        var limiter = CreateLimiter(db, maxPerHour: 2);
+
+        var result = await limiter.CheckAsync("1.2.3.4", CancellationToken.None);
+
+        Assert.True(result.IsAllowed);
+        Assert.Equal(0, result.Remaining);
+    }
+
+    [Fact]
+    public async Task CheckAsync_Remaining_IsZeroWhenExceeded()
+    {
+        using var db = CreateInMemoryDb();
+        db.GenerationRequests.Add(CreateRow("1.2.3.4", DateTime.UtcNow));
+        await db.SaveChangesAsync();
+        var limiter = CreateLimiter(db, maxPerHour: 1);
+
+        var result = await limiter.CheckAsync("1.2.3.4", CancellationToken.None);
+
+        Assert.False(result.IsAllowed);
+        Assert.Equal(0, result.Remaining);
+    }
+
+    [Fact]
+    public async Task CheckAsync_Reset_IsWhenTheOldestRequestAgesOut()
+    {
+        using var db = CreateInMemoryDb();
+        var oldest = DateTime.UtcNow.AddMinutes(-10);
+        db.GenerationRequests.Add(CreateRow("1.2.3.4", oldest));
+        db.GenerationRequests.Add(CreateRow("1.2.3.4", DateTime.UtcNow));
+        await db.SaveChangesAsync();
+        var limiter = CreateLimiter(db, maxPerHour: 10);
+
+        var result = await limiter.CheckAsync("1.2.3.4", CancellationToken.None);
+
+        var expected = new DateTimeOffset(oldest.AddHours(1), TimeSpan.Zero).ToUnixTimeSeconds();
+        Assert.InRange(result.ResetUnixSeconds, expected - 2, expected + 2);
+    }
+
+    [Fact]
+    public async Task CheckAsync_Reset_IsAFullWindowAheadWhenNothingIsRecorded()
+    {
+        using var db = CreateInMemoryDb();
+        var limiter = CreateLimiter(db, maxPerHour: 10);
+
+        var result = await limiter.CheckAsync("1.2.3.4", CancellationToken.None);
+
+        var expected = DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeSeconds();
+        Assert.InRange(result.ResetUnixSeconds, expected - 2, expected + 2);
+    }
 }

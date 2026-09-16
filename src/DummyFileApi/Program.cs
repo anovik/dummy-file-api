@@ -59,7 +59,9 @@ builder.Services.AddSwaggerGen(options =>
             Free and unauthenticated: no signup, no API key. Sizes are human-readable and in binary units
             (1KB = 1,024 bytes, 1MB = 1,048,576 bytes; KiB/MiB are accepted aliases). Each type's minimum and
             maximum are listed by `GET /api/files/types`. `GET /api/files/generate` is rate limited per client
-            IP; over the limit it returns 429 with a `Retry-After` header. Best-effort, not an SLA.
+            IP and reports the window in `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`;
+            over the limit it returns 429 with a `Retry-After` header. When too many generations are already
+            in flight it sheds the request with a 503 and a `Retry-After`. Best-effort, not an SLA.
             """,
         License = new OpenApiLicense
         {
@@ -79,6 +81,7 @@ builder.Services.Configure<FileGenerationOptions>(
 builder.Services.Configure<RateLimitingOptions>(
     builder.Configuration.GetSection(RateLimitingOptions.SectionName));
 builder.Services.AddScoped<GenerationRateLimiter>();
+builder.Services.AddSingleton<GenerationConcurrencyGuard>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default") ?? "Data Source=dummyfileapi.db"));

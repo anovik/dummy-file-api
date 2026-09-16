@@ -30,6 +30,23 @@ public class SwaggerDocumentTests(ProductionWebApplicationFactory factory) : ICl
     }
 
     [Fact]
+    public async Task SwaggerDocument_DocumentsEveryStatusGenerateCanReturn()
+    {
+        var response = await _client.GetAsync("/swagger/v1/swagger.json");
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var responses = document.RootElement
+            .GetProperty("paths").GetProperty("/api/files/generate")
+            .GetProperty("get").GetProperty("responses");
+
+        var statuses = responses.EnumerateObject().Select(p => p.Name).ToHashSet();
+        Assert.Equal(["200", "400", "429", "503"], statuses);
+
+        // The headers aren't modelled in the schema, only named in the description.
+        Assert.Contains("X-RateLimit-Remaining", responses.GetProperty("200").GetProperty("description").GetString());
+    }
+
+    [Fact]
     public async Task SwaggerUi_IsServed()
     {
         var response = await _client.GetAsync("/swagger/index.html");

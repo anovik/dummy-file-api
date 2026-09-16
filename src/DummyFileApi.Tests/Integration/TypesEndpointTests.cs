@@ -22,7 +22,7 @@ public class TypesEndpointTests(IntegrationTestWebApplicationFactory factory) : 
         Assert.All(types, t =>
         {
             Assert.True(t.MinSizeBytes > 0);
-            Assert.Equal(104_857_600, t.MaxSizeBytes);
+            Assert.Equal(52_428_800, t.MaxSizeBytes);
         });
     }
 }

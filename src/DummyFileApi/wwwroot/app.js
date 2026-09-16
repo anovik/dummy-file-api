@@ -135,6 +135,15 @@ function localValidationError(type, bytes) {
   return null;
 }
 
+// /generate reports the caller's remaining quota in response headers.
+function remainingNote(response) {
+  const remaining = response.headers.get("X-RateLimit-Remaining");
+  const limit = response.headers.get("X-RateLimit-Limit");
+  return remaining === null || limit === null
+    ? ""
+    : ` ${remaining} of ${limit} requests left this hour.`;
+}
+
 async function loadTypes() {
   const response = await fetch("/api/files/types");
   if (!response.ok) {
@@ -187,7 +196,7 @@ form.addEventListener("submit", async event => {
 
     const blob = await response.blob();
     saveBlob(blob, filenameFrom(response, `dummy.${typesByKey.get(type).extension}`));
-    showStatus(`Downloaded ${withCount(blob.size)} of ${type}.`);
+    showStatus(`Downloaded ${withCount(blob.size)} of ${type}.${remainingNote(response)}`);
   } catch {
     showError("Could not reach the API. Check your connection and try again.");
   } finally {

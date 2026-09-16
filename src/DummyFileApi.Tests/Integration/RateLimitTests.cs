@@ -11,6 +11,9 @@ public class RateLimitTests(LowRateLimitWebApplicationFactory factory) : IClassF
     private static HttpRequestMessage Request(string clientIp) =>
         TestRequests.ForwardedFor("/api/files/generate?type=txt&size=1KB", clientIp);
 
+    private static string Header(HttpResponseMessage response, string name) =>
+        Assert.Single(response.Headers.GetValues(name));
+
     [Fact]
     public async Task Generate_ExceedingConfiguredMaxPerHour_Returns429WithRetryAfter()
     {
@@ -28,6 +31,38 @@ public class RateLimitTests(LowRateLimitWebApplicationFactory factory) : IClassF
         var error = await rejected.Content.ReadFromJsonAsync<ErrorResponse>();
         Assert.Contains("Rate limit exceeded", error!.Error);
         Assert.True(rejected.Headers.RetryAfter?.Delta > TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task Generate_ReportsTheWindowInRateLimitHeaders()
+    {
+        const string clientIp = "10.20.30.4";
+
+        var first = await _client.SendAsync(Request(clientIp));
+        var second = await _client.SendAsync(Request(clientIp));
+
+        Assert.Equal("3", Header(first, "X-RateLimit-Limit"));
+        Assert.Equal("2", Header(first, "X-RateLimit-Remaining"));
+        Assert.Equal("1", Header(second, "X-RateLimit-Remaining"));
+        Assert.True(long.Parse(Header(second, "X-RateLimit-Reset")) > DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+    }
+
+    [Fact]
+    public async Task Generate_OverTheLimit_StillReportsRateLimitHeaders()
+    {
+        const string clientIp = "10.20.30.5";
+
+        for (var i = 0; i < 3; i++)
+        {
+            await _client.SendAsync(Request(clientIp));
+        }
+
+        var rejected = await _client.SendAsync(Request(clientIp));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
+        Assert.Equal("3", Header(rejected, "X-RateLimit-Limit"));
+        Assert.Equal("0", Header(rejected, "X-RateLimit-Remaining"));
+        Assert.True(long.Parse(Header(rejected, "X-RateLimit-Reset")) > DateTimeOffset.UtcNow.ToUnixTimeSeconds());
     }
 
     [Fact]
